@@ -1,0 +1,2212 @@
+<!doctype html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>打怪遊戲（武器系統版 - 角色中心瞄準）</title>
+    <style>
+        /* ... (CSS 樣式保持不變) ... */
+        :root {
+            --ui-bg: #0f1724;
+            --panel: #0b1220;
+            --accent: #2dd4bf;
+            --danger: #fb7185;
+            --exp-color: #3b82f6;
+            --gold-color: #fcd34d;
+        }
+
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            background: linear-gradient(180deg, #020617 0%, #07102a 100%);
+            font-family: Inter, system-ui, Arial
+        }
+
+        /* Layout */
+        .game-wrap {
+            display: grid;
+            grid-template-columns: 1fr 220px;
+            gap: 12px;
+            height: 100vh;
+            padding: 12px;
+            box-sizing: border-box
+        }
+
+        .viewport {
+            position: relative;
+            overflow: hidden;
+            border-radius: 10px;
+            background: linear-gradient(180deg, #0b1220, #07122b);
+            box-shadow: 0 6px 30px rgba(0, 0, 0, .6);
+            aspect-ratio: 16/9;
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%
+        }
+
+        .side-panel {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 10px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02)
+        }
+
+        /* 玩家資訊面板 */
+        .player-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .player-stats {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .player-avatar {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(90deg, #0ea5a4, #34d399);
+            border-radius: 8px;
+            border: 2px solid var(--accent);
+            box-shadow: 0 0 8px rgba(45, 212, 191, 0.5);
+        }
+
+        .player-level-exp {
+            flex: 1;
+            font-size: 13px;
+            color: #e6eef0;
+        }
+
+        .player-name {
+            font-weight: 700;
+            color: #e6eef0
+        }
+
+        /* 經驗條容器 */
+        .exp-bar {
+            height: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* 經驗條填滿 */
+        .exp-fill {
+            height: 100%;
+            background-color: var(--exp-color);
+            transition: width 0.3s ease-out;
+        }
+
+        /* 經驗值文字疊加 */
+        .exp-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 600;
+            text-shadow: 0 0 2px #000;
+        }
+
+
+        /* 屬性顯示 */
+        .player-attack-stat,
+        .player-gold-stat {
+            font-size: 14px;
+            color: #fff;
+            font-weight: 600;
+            padding-top: 8px;
+        }
+
+        /* 金幣顏色強調 */
+        .player-gold-stat {
+            color: var(--gold-color);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding-top: 4px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        /* --- 背包樣式 --- */
+        .inventory-panel {
+            color: #cde;
+        }
+
+        .inventory-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            /* 4xN 的格子 */
+            gap: 6px;
+            margin-top: 8px;
+            min-height: 100px;
+        }
+
+        .item-slot {
+            width: 45px;
+            height: 45px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            position: relative;
+            overflow: hidden;
+            color: #fff;
+        }
+
+        .item-icon {
+            width: 100%;
+            height: 100%;
+            background-color: #555;
+            /* 物品背景色 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        .item-count {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            padding: 0 2px;
+            border-top-left-radius: 3px;
+            font-size: 10px;
+            line-height: 1;
+        }
+
+        /* 武器與物品的可點擊和裝備狀態 */
+        .item-slot.clickable {
+            cursor: pointer;
+        }
+
+        .item-slot.active {
+            border: 2px solid var(--accent);
+            box-shadow: 0 0 8px rgba(45, 212, 191, 0.8);
+        }
+
+        /* --- 物品詳情面板 --- */
+        .item-detail-panel h3 {
+            margin: 0;
+            margin-bottom: 4px;
+        }
+
+        .action-btn {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            color: #0b1220;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            font-size: 14px;
+            display: block;
+            /* 讓分解按鈕佔滿一行 */
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .action-btn:hover {
+            opacity: 0.8;
+        }
+
+        .equip-btn {
+            background-color: var(--accent);
+        }
+
+        .upgrade-btn {
+            background-color: var(--gold-color);
+        }
+
+        .action-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .equip-upgrade-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        .equip-upgrade-row button {
+            flex: 1;
+        }
+
+        /* 隱藏/顯示操作按鈕 */
+        .item-detail-panel button {
+            display: none;
+        }
+
+
+        /* HUD */
+        .hud {
+            position: absolute;
+            left: 12px;
+            top: 12px;
+            color: #cde;
+            z-index: 50
+        }
+
+        .hud .name {
+            font-weight: 600;
+            margin-bottom: 4px
+        }
+
+        .hp-bar {
+            width: 220px;
+            height: 14px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            overflow: hidden
+        }
+
+        .hp-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ef4444, #f97316);
+            width: 100%
+        }
+
+        /* joystick */
+        .ctrls {
+            position: absolute;
+            left: 16px;
+            bottom: 16px;
+            width: 160px;
+            height: 160px;
+            touch-action: none;
+            z-index: 60
+        }
+
+        .joy-base {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.03);
+            display: flex;
+            align-items: center;
+            justify-content: center
+        }
+
+        .joy-stick {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(180deg, #111827, #0b1220);
+            box-shadow: 0 6px 14px rgba(0, 0, 0, .6);
+            transform: translate(56px, 56px)
+        }
+
+        /* skill buttons (in-game) */
+        .skills-ingame {
+            position: absolute;
+            right: 16px;
+            bottom: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            align-items: center;
+            z-index: 60;
+        }
+
+        /* 技能按鈕現在必須支援拖曳，禁用瀏覽器默認行為 */
+        .skill-btn {
+            width: 84px;
+            height: 84px;
+            border-radius: 50%;
+            background: linear-gradient(180deg, #06202a, #083244);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #dff;
+            position: relative;
+            font-weight: 700;
+            user-select: none;
+            font-size: 24px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+            cursor: pointer;
+            transition: background 0.2s ease-in-out;
+            touch-action: none;
+            /* 關鍵：禁用平移縮放 */
+        }
+
+        .skill-btn:hover {
+            background: linear-gradient(180deg, #083244, #06202a);
+        }
+
+        /* 技能瞄準拖曳時的狀態 */
+        .skill-btn.active-aim {
+            transform: scale(1.1);
+            border: 3px solid var(--accent);
+            box-shadow: 0 0 15px var(--accent);
+        }
+
+        .skill-cd {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: #fff;
+        }
+
+        /* small helper */
+        .footer-note {
+            font-size: 12px;
+            color: #9fb4c4
+        }
+
+        @media (max-width:880px) {
+            .game-wrap {
+                grid-template-columns: 1fr 140px
+            }
+
+            .skills-ingame {
+                right: 8px;
+                bottom: 8px;
+                gap: 8px;
+            }
+
+            .skill-btn {
+                width: 60px;
+                height: 60px;
+                font-size: 20px;
+            }
+
+            .skill-cd {
+                font-size: 16px;
+            }
+
+            .item-slot {
+                width: 30px;
+                height: 30px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="game-wrap">
+        <div class="viewport" id="viewport">
+            <canvas id="gameCanvas" width="1280" height="720"></canvas>
+            <div id="game-announcement" style="
+                position: absolute; 
+                top: 50%; 
+                left: 50%; 
+                transform: translate(-50%, -50%); 
+                color: #FFD700; /* 金色，突出效果 */
+                font-size: 32px; 
+                font-weight: bold;
+                text-shadow: 2px 2px 8px #000000;
+                z-index: 1000; 
+                pointer-events: none; /* 讓點擊穿透到遊戲畫面 */
+                opacity: 0; 
+                transition: opacity 1s, transform 0.5s; /* 添加過渡效果 */
+            "></div>
+            <div class="hud" id="hud">
+                <div class="name">玩家：英雄</div>
+                <div class="hp-bar">
+                    <div class="hp-fill" id="hpFill"></div>
+                </div>
+            </div>
+            <div class="ctrls" id="joystick">
+                <div class="joy-base"></div>
+                <div class="joy-stick" id="joyStick"></div>
+            </div>
+
+            <div class="skills-ingame">
+                <div class="skill-btn" id="skill1" data-skill-id="1">Q
+                    <div class="skill-cd" id="cd1" style="display:none"></div>
+                </div>
+                <div class="skill-btn" id="skill2" data-skill-id="2">E
+                    <div class="skill-cd" id="cd2" style="display:none"></div>
+                </div>
+                <div class="skill-btn" id="skill3" data-skill-id="3">R
+                    <div class="skill-cd" id="cd3" style="display:none"></div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="side-panel">
+            <div class="player-info">
+                <div class="player-stats">
+                    <div class="player-avatar"></div>
+                    <div class="player-level-exp">
+                        <div class="player-name">英雄</div>
+                        <div id="playerStatsText">等級 1</div>
+                    </div>
+                </div>
+                <div class="exp-bar">
+                    <div class="exp-text" id="expText">0/100</div>
+                    <div class="exp-fill" id="expFill" style="width: 0%;"></div>
+                </div>
+                <div class="player-attack-stat" id="playerAttackStat">攻擊力：10</div>
+                <div class="player-gold-stat" id="playerGoldStat">
+                    金幣：<span id="goldAmount">0</span>
+                </div>
+            </div>
+
+            <div class="inventory-panel">
+                <h3>背包</h3>
+                <div class="inventory-grid" id="inventoryGrid">
+                </div>
+            </div>
+
+            <div class="item-detail-panel" id="itemDetailPanel"
+                style="display:none; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.05);">
+                <h3 id="detailName" style="margin: 0; margin-bottom: 4px;">物品名稱</h3>
+                <div id="detailLevel" style="color: #ccc; font-size: 14px;"></div>
+                <div id="detailType" style="color: var(--accent); font-size: 14px; margin-bottom: 8px;"></div>
+                <div id="detailStats" style="color: #fff; font-size: 14px; margin-bottom: 12px;"></div>
+
+                <div class="equip-upgrade-row">
+                    <button id="equipBtn" class="action-btn equip-btn">裝配</button>
+                    <button id="upgradeBtn" class="action-btn upgrade-btn">升級 (<span id="upgradeCost">100</span>
+                        G)</button>
+                </div>
+
+                <button id="disassembleBtn" class="action-btn"
+                    style="background-color: var(--danger); margin-top: 12px;">分解 (獲得 G)</button>
+            </div>
+
+            <div style="margin-top:auto">
+                <div class="footer-note">操作：搖桿 / 鍵盤方向鍵移動，拖曳技能鍵以**角色為中心**瞄準並釋放技能。點擊螢幕普攻。</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ... (所有 CONST/LET 變數定義，以及 MONSTER_TYPES, WEAPON_DEFINITIONS, etc. 保持不變) ...
+        const MONSTER_TYPES = {
+            BASIC: {
+                id: 'basic', level: 1,
+                hp: 30, maxHp: 30,
+                speed: 70, atk: 12,
+                r: 20, color: '#e07b7b',
+                expDrop: 15,
+                goldMin: 1, goldMax: 3, goldValue: 5,
+                respawnTime: 2 // 2 秒 (一般怪)
+            },
+            FAST: {
+                id: 'fast', level: 3,
+                hp: 40, maxHp: 40,
+                speed: 120, atk: 15,
+                r: 18, color: '#f7d37a',
+                expDrop: 30,
+                goldMin: 2, goldMax: 4, goldValue: 8,
+                respawnTime: 3
+            },
+            TANK: {
+                id: 'tank', level: 5,
+                hp: 150, maxHp: 150,
+                speed: 50, atk: 8,
+                r: 25, color: '#5b8c9d',
+                expDrop: 50,
+                goldMin: 3, goldMax: 5, goldValue: 10,
+                respawnTime: 4
+            }
+        };
+
+        // **調整點 3a: Boss 重生時間從 5 分鐘下修至 1 分鐘**
+        // **調整點 3b: Boss 技能冷卻時間從 4 秒下修至 3 秒**
+        const BOSS_TYPE = {
+            id: 'boss', level: 10,
+            hp: 1500, maxHp: 1500,
+            speed: 100, atk: 25,
+            r: 50, color: '#d30000',
+            expDrop: 500,
+            goldMin: 20, goldMax: 50, goldValue: 20,
+            respawnTime: 60, // 1 分鐘
+            skillCooldown: 3, // 3 秒
+            skillTimer: 2,
+            skillCastingTime: 1.5,
+            rayDuration: 1.5,
+            rayDamageInterval: 0.1,
+            meteorDamage: 60,
+            rayDamage: 20,
+        };
+        const WEAPON_RARITIES = {
+            COMMON: {color: '#666', dropChance: 0.1 * 4},
+            RARE: {color: '#4d88ff', dropChance: 0.05 * 4},
+            EPIC: {color: '#8e44ad', dropChance: 0.02 * 4},
+            LEGENDARY: {color: '#e74c3c', dropChance: 0.01 * 4},
+            MYTHIC: {color: 'linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3)', isBossDrop: true}
+        };
+        // **調整點 1: 新增更多武器**
+        const WEAPON_DEFINITIONS = {
+            E_WEAPON_BASIC: {
+                id: 'E_WEAPON_BASIC',
+                name: '能量光束 E',
+                type: 'E',
+                rarity: WEAPON_RARITIES.RARE,
+                baseDmg: 30,
+                dmgPerLevel: 10,
+                levelUpCost: 100,
+            },
+            // 新增 E 武器
+            FIRE_ORB_WEAPON: {
+                    id: 'FIRE_ORB_WEAPON',
+                    name: '烈焰守護者',
+                    type: 'E', // 裝備在 E 槽位
+                    rarity: WEAPON_RARITIES.EPIC, // 稀有度為 EPIC
+                    baseDmg: 20, // 火球基礎傷害
+                    dmgPerLevel: 8, // 每級成長傷害
+                    levelUpCost: 150,
+                    // 新增標記：用於在遊戲邏輯中識別這把武器
+                    isFireOrbWeapon: true, 
+            },
+            R_WEAPON_BASIC: {
+                id: 'R_WEAPON_BASIC',
+                name: '烈焰衝擊 R',
+                type: 'R',
+                rarity: WEAPON_RARITIES.EPIC,
+                baseDmg: 50,
+                dmgPerLevel: 20,
+                levelUpCost: 250,
+            },
+            
+            // 新增傳奇 E 武器
+            E_WEAPON_LEGENDARY: {
+                id: 'E_WEAPON_LEGENDARY',
+                name: '絕對零度 E',
+                type: 'E',
+                rarity: WEAPON_RARITIES.LEGENDARY,
+                baseDmg: 50,
+                dmgPerLevel: 15,
+                levelUpCost: 300,
+            },
+            // 新增傳奇 R 武器
+            R_WEAPON_LEGENDARY: {
+                id: 'R_WEAPON_LEGENDARY',
+                name: '時空裂隙 R',
+                type: 'R',
+                rarity: WEAPON_RARITIES.LEGENDARY,
+                baseDmg: 80,
+                dmgPerLevel: 30,
+                levelUpCost: 400,
+            },
+            // Mythic R 武器 (上調基礎傷害)
+            R_WEAPON_BOSS: {
+                id: 'R_WEAPON_BOSS',
+                name: '湮滅黑洞 R',
+                type: 'R',
+                rarity: WEAPON_RARITIES.MYTHIC,
+                baseDmg: 120,
+                dmgPerLevel: 50,
+                levelUpCost: 600,
+            },
+            // 新增 Mythic E 武器
+            E_WEAPON_BOSS: {
+                id: 'E_WEAPON_BOSS',
+                name: '創世之光 E',
+                type: 'E',
+                rarity: WEAPON_RARITIES.MYTHIC,
+                baseDmg: 100,
+                dmgPerLevel: 45,
+                levelUpCost: 600,
+            }
+        };
+        const ITEM_DEFINITIONS = {
+            healing_potion: {
+                name: '治療藥水', icon: 'HP', color: '#ff4d4d', stackable: true,
+                desc: '立即恢復 35 點生命值。'
+            },
+            power_scroll: {
+                name: '力量卷軸', icon: 'ATK', color: '#fcd34d', stackable: false,
+                desc: '永久提升 5 點基礎攻擊力。'
+            },
+            old_key: {
+                name: '老舊鑰匙', icon: 'KEY', color: '#ccc', stackable: false,
+                desc: '據說能開啟古老的寶箱。'
+            },
+            boss_item: {
+                name: '遠古核心', icon: 'CORE', color: '#ff00ff', stackable: true,
+                desc: '強大的能量核心，分解可獲大量金幣。'
+            },
+        }
+
+        // **小怪重生點位 (沿用上次的調整)**
+        const monsterSpawns = [
+            {x: 500, y: 500, monster: null, type: MONSTER_TYPES.BASIC},
+            {x: 2500, y: 400, monster: null, type: MONSTER_TYPES.FAST},
+            {x: 700, y: 1600, monster: null, type: MONSTER_TYPES.TANK},
+            {x: 2600, y: 1500, monster: null, type: MONSTER_TYPES.BASIC},
+            // 新增的小怪重生點
+            {x: 1500, y: 100, monster: null, type: MONSTER_TYPES.BASIC},
+            {x: 100, y: 1000, monster: null, type: MONSTER_TYPES.FAST},
+            {x: 2900, y: 1000, monster: null, type: MONSTER_TYPES.BASIC},
+            {x: 1500, y: 1900, monster: null, type: MONSTER_TYPES.TANK},
+            {x: 400, y: 1200, monster: null, type: MONSTER_TYPES.FAST},
+            {x: 2000, y: 1700, monster: null, type: MONSTER_TYPES.BASIC}
+        ];
+
+        const bossSpawn = {
+            x: 1500,
+            y: 300,
+            monster: null,
+            type: BOSS_TYPE,
+            respawnTimer: BOSS_TYPE.respawnTime,
+        };
+        const allSpawns = [...monsterSpawns, bossSpawn];
+        function spawnMonsterAtSpawn(spawn) {
+            const type = spawn.type;
+
+            const monster = {
+                x: spawn.x,
+                y: spawn.y,
+                r: type.r,
+                hp: type.hp,
+                maxHp: type.maxHp,
+                speed: type.speed,
+                color: type.color,
+                level: type.level,
+                expDrop: type.expDrop,
+                goldMin: type.goldMin,
+                goldMax: type.goldMax,
+                goldValue: type.goldValue,
+
+                state: "wander",
+                aggro: false,
+
+                wanderDir: Math.random() * Math.PI * 2,
+                wanderTimer: 1 + Math.random() * 2,
+                attackCooldown: 0,
+                atk: type.atk,
+                aggroRange: type.id === 'boss' ? 500 : 300,
+                attackRange: type.r + 5,
+
+                isBoss: type.id === 'boss',
+                skillTimer: type.id === 'boss' ? type.skillTimer : 0,
+                skillCasting: 0,
+                skillTarget: null,
+            };
+            spawn.monster = monster;
+        }
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const viewport = document.getElementById('viewport');
+        const hudHp = document.getElementById('hpFill');
+        const expFill = document.getElementById('expFill');
+        const expText = document.getElementById('expText');
+        const playerStatsText = document.getElementById('playerStatsText');
+        const playerAttackStat = document.getElementById('playerAttackStat');
+        const goldAmountSpan = document.getElementById('goldAmount');
+        const inventoryGrid = document.getElementById('inventoryGrid');
+        const itemDetailPanel = document.getElementById('itemDetailPanel');
+        const detailName = document.getElementById('detailName');
+        const detailLevel = document.getElementById('detailLevel');
+        const detailType = document.getElementById('detailType');
+        const detailStats = document.getElementById('detailStats');
+        const equipBtn = document.getElementById('equipBtn');
+        const upgradeBtn = document.getElementById('upgradeBtn');
+        const upgradeCost = document.getElementById('upgradeCost');
+        const disassembleBtn = document.getElementById('disassembleBtn');
+        let selectedWeaponIndex = -1;
+        const MAP_W = 3000, MAP_H = 2000;
+        const SCREEN_W = canvas.width, SCREEN_H = canvas.height;
+        // 取得廣播 UI 元素
+        const gameAnnouncement = document.getElementById('game-announcement');
+        let announcementTimer; // 用於計時和清除廣播
+
+        /**
+         * 顯示一個遊戲廣播訊息。
+         * @param {string} message 要顯示的訊息
+         * @param {number} duration 訊息顯示的毫秒數 (預設 5000ms = 5秒)
+         */
+        function broadcastMessage(message, duration = 5000) {
+            // 每次發出新廣播時，清除舊的計時器
+            clearTimeout(announcementTimer);
+
+            // 設置訊息內容和樣式
+            gameAnnouncement.textContent = message;
+            gameAnnouncement.style.opacity = '1'; // 顯示訊息
+            gameAnnouncement.style.transform = 'translate(-50%, -50%) scale(1.1)'; // 讓訊息稍微放大，更吸引眼球
+
+            // 設置計時器，在 duration 之後淡出訊息
+            announcementTimer = setTimeout(() => {
+                gameAnnouncement.style.opacity = '0'; // 隱藏訊息
+                gameAnnouncement.style.transform = 'translate(-50%, -50%) scale(1.0)';
+            }, duration);
+        }
+        const player = {
+            x: MAP_W / 2, y: MAP_H / 2, r: 24,
+            speed: 300, hp: 100, maxHp: 100,
+            color: '#66f', dirX: 0, dirY: 0,
+            faceX: 1, faceY: 0,
+            level: 1,
+            exp: 0,
+            expToNextLevel: 100,
+            baseAttack: 10,
+            name: "英雄",
+            gold: 500,
+            inventory: [],
+            inventorySize: 12,
+            equipment: {
+                E: null,
+                R: null,
+            },
+        };
+        const PLAYER_CONFIG = {
+            basicAttackCD: 0.3,
+        };
+        let basicAttackCooldown = 0;
+        // ... (在 player, enemies, projectiles 等變數之後)
+
+        const fireOrbs = []; // 用於儲存烈焰守護者武器產生的火球物件
+        let isESkillDisabledByOrb = false; // 標記 E 技能是否因武器而禁用
+        const FIRE_ORB_ATTACK_CD = 0.5; // 火球對單個敵人的攻擊冷卻 (秒)
+
+        // ... (addToInventory, calculateExpToNextLevel, checkLevelUp, updatePlayerStatsHUD, showItemDetail, equipWeapon, upgradeWeapon, disassembleWeapon 函式保持不變) ...
+        function addToInventory(itemOrWeapon, count = 1) {
+
+            // 1. 如果傳入的是已經結構化的武器物件 (isWeapon: true)
+            if (itemOrWeapon.isWeapon) {
+                if (player.inventory.length < player.inventorySize) {
+                    player.inventory.push(itemOrWeapon);
+
+                    // ⭐ 修正 BUG：使用 itemOrWeapon 檢查稀有度並廣播
+                    if (itemOrWeapon.rarity === 'MYTHIC') {
+                        const message = `恭喜 ${player.name} 獲得武器 ${itemOrWeapon.name}!`;
+                        broadcastMessage(message);
+                    }
+
+                    updateInventoryUI();
+                    return true;
+                }
+                return false;
+            }
+
+            // 2. 如果傳入的是一般物品 ID
+            const itemId = itemOrWeapon;
+            const itemDef = ITEM_DEFINITIONS[itemId];
+            if (!itemDef) return false;
+
+            let added = false;
+            if (itemDef.stackable) {
+                const existingItem = player.inventory.find(item => item.id === itemId);
+                if (existingItem) {
+                    existingItem.count += count;
+                    added = true;
+                }
+            }
+
+            if (!added && player.inventory.length < player.inventorySize) {
+                player.inventory.push({
+                    id: itemId,
+                    count: count,
+                    name: itemDef.name,
+                    icon: itemDef.icon,
+                    color: itemDef.color
+                });
+                added = true;
+            }
+
+            if (added) {
+                updateInventoryUI();
+            }
+            return added;
+        }
+        function calculateExpToNextLevel(level) {
+            if (level === 1) return 100;
+            return 100 + level * 50;
+        }
+        function checkLevelUp() {
+            let leveledUp = false;
+            while (player.exp >= player.expToNextLevel) {
+                player.exp -= player.expToNextLevel;
+                player.level++;
+                leveledUp = true;
+
+                player.maxHp += 20;
+                player.hp = player.maxHp;
+                player.speed += 10;
+                player.baseAttack += 1;
+
+                player.expToNextLevel = calculateExpToNextLevel(player.level);
+                console.log(`恭喜升級到 Lv${player.level}!`);
+            }
+            return leveledUp;
+        }
+        function updatePlayerStatsHUD() {
+            const expPercent = player.exp / player.expToNextLevel * 100;
+            expFill.style.width = `${expPercent}%`;
+            expText.textContent = `${player.exp}/${player.expToNextLevel}`;
+            playerStatsText.textContent = `等級 ${player.level}`;
+            playerAttackStat.textContent = `攻擊力：${player.baseAttack}`;
+            goldAmountSpan.textContent = player.gold;
+        }
+        function showItemDetail(index) {
+            selectedWeaponIndex = index;
+            const item = player.inventory[index];
+
+            if (!item) {
+                itemDetailPanel.style.display = 'none';
+                return;
+            }
+
+            itemDetailPanel.style.display = 'block';
+            detailName.textContent = item.name;
+            detailName.style.color = item.color;
+
+            equipBtn.style.display = 'none';
+            upgradeBtn.style.display = 'none';
+            disassembleBtn.style.display = 'none';
+
+            if (item.isWeapon) {
+                const def = WEAPON_DEFINITIONS[item.id];
+
+                detailLevel.textContent = `等級：${item.level}`;
+                detailType.textContent = `裝備欄位：${item.type} 技能`;
+
+                const currentDmg = def.baseDmg + (item.level - 1) * def.dmgPerLevel;
+                const nextDmg = def.baseDmg + item.level * def.dmgPerLevel;
+                detailStats.innerHTML = `
+                  當前加成：**+${currentDmg}** 傷害/治療<br>
+                  下一級：**+${nextDmg}** 傷害/治療 (每級 +${def.dmgPerLevel})
+              `;
+
+                equipBtn.style.display = 'block';
+                upgradeBtn.style.display = 'block';
+                disassembleBtn.style.display = 'block';
+
+                const isEquipped = player.equipment[item.type] === item;
+                equipBtn.textContent = isEquipped ? "✓ 已裝備" : "裝配";
+                equipBtn.disabled = isEquipped;
+                equipBtn.onclick = () => equipWeapon(index);
+
+                const cost = def.levelUpCost * item.level;
+                upgradeCost.textContent = cost;
+                upgradeBtn.disabled = player.gold < cost;
+                upgradeBtn.onclick = () => upgradeWeapon(index, cost);
+
+                const goldGained = Math.floor(cost / 2);
+                disassembleBtn.textContent = `分解 (獲得 ${goldGained} G)`;
+                disassembleBtn.onclick = () => disassembleWeapon(index);
+
+            }
+            else {
+                const def = ITEM_DEFINITIONS[item.id];
+
+                detailLevel.textContent = item.count > 1 ? `數量：${item.count}` : '';
+                detailType.textContent = '一般物品';
+
+                detailStats.innerHTML = `**描述：** ${def.desc}`;
+            }
+
+            updateInventoryUI();
+        }
+        function equipWeapon(index) {
+            const weapon = player.inventory[index];
+            if (!weapon || !weapon.isWeapon) return;
+
+            player.equipment[weapon.type] = weapon;
+            const item = player.inventory[index];
+            const slot = item.type;
+            const oldWeapon = player.equipment[slot];
+
+            // 處理卸下舊裝備的邏輯
+            if (oldWeapon) {
+                // ... (其他舊裝備卸下邏輯)
+
+                // ⭐ 烈焰守護者卸下邏輯
+                if (oldWeapon.isFireOrbWeapon) {
+                    fireOrbs.length = 0; // 移除所有火球
+                    isESkillDisabledByOrb = false; // 啟用 E 技能
+                }
+            }
+
+            // 處理裝備新武器的邏輯
+            player.equipment[slot] = item;
+
+            // ⭐ 烈焰守護者裝備邏輯
+            if (item.isFireOrbWeapon) {
+                isESkillDisabledByOrb = true; // 禁用 E 技能
+                generateFireOrbs(item); // 生成火球
+            }
+
+            showItemDetail(index);
+            updateInventoryUI();
+            console.log(`已裝備 ${weapon.name} 到 ${weapon.type} 技能。`);
+        }
+        function upgradeWeapon(index, cost) {
+            const weapon = player.inventory[index];
+            if (!weapon || !weapon.isWeapon || player.gold < cost) return;
+
+            player.gold -= cost;
+            weapon.level++;
+
+            updatePlayerStatsHUD();
+            showItemDetail(index);
+            updateInventoryUI();
+            console.log(`${weapon.name} 升級到 Lv${weapon.level}!`);
+        }
+        function disassembleWeapon(index) {
+            const weapon = player.inventory[index];
+            if (!weapon || !weapon.isWeapon) return;
+
+            const def = WEAPON_DEFINITIONS[weapon.id];
+
+            const cost = def.levelUpCost * weapon.level;
+            const goldGained = Math.floor(cost / 2);
+
+            player.gold += goldGained;
+
+            if (player.equipment[weapon.type] === weapon) {
+                player.equipment[weapon.type] = null;
+            }
+
+            player.inventory.splice(index, 1);
+
+            updatePlayerStatsHUD();
+            itemDetailPanel.style.display = 'none';
+            updateInventoryUI();
+            selectedWeaponIndex = -1;
+
+            console.log(`已分解 ${weapon.name} Lv${weapon.level}，獲得 ${goldGained} 金幣。`);
+        }
+
+        // **調整點 2: 修改 Boss 掉落機率和邏輯**
+        function tryDropWeapon(monster) {
+            const isBoss = monster.isBoss;
+            const rand = Math.random();
+            let droppedWeaponDef = null;
+
+            if (isBoss) {
+                // Mythic 掉落率 1/3
+                if (rand < 1 / 3) {
+                    const mythicWeapons = [WEAPON_DEFINITIONS.R_WEAPON_BOSS, WEAPON_DEFINITIONS.E_WEAPON_BOSS];
+                    droppedWeaponDef = mythicWeapons[Math.floor(Math.random() * mythicWeapons.length)];
+                }
+            } else {
+                // 普通怪掉落邏輯 (新增傳奇武器)
+                if (rand < WEAPON_RARITIES.RARE.dropChance) {
+                    droppedWeaponDef = WEAPON_DEFINITIONS.E_WEAPON_BASIC;
+                } else if (rand < WEAPON_RARITIES.EPIC.dropChance) {
+                    droppedWeaponDef = WEAPON_DEFINITIONS.R_WEAPON_BASIC;
+                } else if (rand < WEAPON_RARITIES.LEGENDARY.dropChance) {
+                    // 傳奇武器掉落（從傳奇池中隨機）
+                    const legendaryWeapons = [WEAPON_DEFINITIONS.E_WEAPON_LEGENDARY, WEAPON_DEFINITIONS.R_WEAPON_LEGENDARY];
+                    droppedWeaponDef = legendaryWeapons[Math.floor(Math.random() * legendaryWeapons.length)];
+                }
+            }
+
+            if (droppedWeaponDef) {
+                const newWeapon = {
+                    id: droppedWeaponDef.id,
+                    count: 1,
+                    name: droppedWeaponDef.name,
+                    icon: droppedWeaponDef.type, // 暫時保留 type 作為 fallback
+                    color: droppedWeaponDef.rarity.color,
+                    isWeapon: true,
+                    level: 1,
+                    type: droppedWeaponDef.type,
+                };
+                addToInventory(newWeapon);
+            }
+        }
+
+        // ⭐⭐⭐ 核心修改：讓背包顯示武器名稱縮寫 ⭐⭐⭐
+        function updateInventoryUI() {
+            inventoryGrid.innerHTML = '';
+
+            player.inventory.forEach((item, index) => {
+                const slot = document.createElement('div');
+                slot.className = 'item-slot clickable';
+                slot.title = item.name;
+
+                const icon = document.createElement('div');
+                icon.className = 'item-icon';
+
+                // --- 彩虹/單色邏輯開始 ---
+                const isRainbow = item.color.includes('linear-gradient');
+
+                if (isRainbow) {
+                    // 1. 物品槽位邊框：如果設定為漸變色，則使用漸變色
+                    slot.style.borderImage = `${item.color} 1`;
+                    slot.style.borderWidth = '2px';
+                    slot.style.borderStyle = 'solid';
+
+                    // 2. 物品圖標文字：應用彩虹漸變文字效果
+                    icon.style.background = item.color;
+                    icon.style.webkitBackgroundClip = 'text'; // 這是使文字變彩色的關鍵
+                    icon.style.backgroundClip = 'text';
+                    icon.style.color = 'transparent'; // 使文字顏色透明，顯示背景
+                    icon.style.backgroundColor = 'transparent'; // 圖標背景設為透明
+                } else {
+                    // 否則，應用單色
+                    slot.style.borderColor = item.color; // 應用單色邊框
+                    icon.style.backgroundColor = item.color; // 應用單色圖標背景
+                    // 清除彩虹相關樣式
+                    slot.style.borderImage = '';
+                    slot.style.borderWidth = '';
+                    slot.style.borderStyle = '';
+                    icon.style.color = '';
+                    icon.style.background = '';
+                    icon.style.webkitBackgroundClip = '';
+                    icon.style.backgroundClip = '';
+                }
+                // --- 彩虹/單色邏輯結束 ---
+
+                // 判斷是否為武器
+                if (item.isWeapon) {
+                    // 武器：顯示名字的前幾個字
+                    const nameText = item.name.length > 4 ? item.name.substring(0, 3) : item.name;
+                    icon.textContent = nameText;
+                    icon.style.fontSize = '12px'; // 調整字體大小以容納名稱
+
+                } else {
+                    // 一般物品：顯示預設圖標 (如 HP, KEY)
+                    icon.textContent = item.icon;
+                    icon.style.fontSize = '10px';
+                }
+
+                slot.appendChild(icon);
+
+                slot.addEventListener('click', () => showItemDetail(index));
+
+                if (item.isWeapon) {
+                    slot.title = `${item.name} Lv${item.level}`;
+
+                    if (player.equipment[item.type] === item) {
+                        slot.classList.add('active');
+                        slot.title += " (已裝備)";
+                    }
+
+                } else {
+                    if (item.count > 1) {
+                        const countText = document.createElement('span');
+                        countText.className = 'item-count';
+                        countText.textContent = item.count;
+                        slot.appendChild(countText);
+                    }
+                }
+
+                inventoryGrid.appendChild(slot);
+            });
+
+            const emptySlots = player.inventorySize - player.inventory.length;
+            for (let i = 0; i < emptySlots; i++) {
+                const slot = document.createElement('div');
+                slot.className = 'item-slot';
+                slot.addEventListener('click', () => itemDetailPanel.style.display = 'none');
+                inventoryGrid.appendChild(slot);
+            }
+        }
+
+        const cam = {x: player.x - SCREEN_W / 2, y: player.y - SCREEN_H / 2};
+        let monsters = [];
+        let projectiles = [];
+        let effects = [];
+        let coins = [];
+        let lastTimestamp = 0;
+
+        // 瞄準指示器狀態 
+        let aimingSkill = {
+            active: false,
+            id: null,
+            pointerId: null,
+            // 新增：拖曳的起始點（技能按鈕中心）
+            startX: 0,
+            startY: 0,
+            // 拖曳的當前點（手指位置）
+            currentX: 0,
+            currentY: 0,
+            // 瞄準的方向向量
+            dirX: 0,
+            dirY: 0,
+        };
+
+
+        monsterSpawns.forEach(spawn => spawnMonsterAtSpawn(spawn));
+        spawnMonsterAtSpawn(bossSpawn);
+        updatePlayerStatsHUD();
+        updateInventoryUI();
+        addToInventory('healing_potion', 3);
+        addToInventory('power_scroll');
+        addToInventory('healing_potion', 1);
+        addToInventory('old_key');
+        // 範例武器將顯示名稱縮寫
+        addToInventory({
+            id: 'E_WEAPON_BASIC',
+            count: 1,
+            name: '測試光束 E',
+            icon: 'E',
+            color: '#4d88ff',
+            isWeapon: true,
+            level: 3,
+            type: 'E',
+        });
+
+
+        // ----- input: keyboard & joystick (無更動) -----
+        const kb = {up: false, down: false, left: false, right: false};
+        window.addEventListener('keydown', e => {
+            if (e.key === 'ArrowUp' || e.key === 'w') kb.up = true;
+            if (e.key === 'ArrowDown' || e.key === 's') kb.down = true;
+            if (e.key === 'ArrowLeft' || e.key === 'a') kb.left = true;
+            if (e.key === 'ArrowRight' || e.key === 'd') kb.right = true;
+        });
+        window.addEventListener('keyup', e => {
+            if (e.key === 'ArrowUp' || e.key === 'w') kb.up = false;
+            if (e.key === 'ArrowDown' || e.key === 's') kb.down = false;
+            if (e.key === 'ArrowLeft' || e.key === 'a') kb.left = false;
+            if (e.key === 'ArrowRight' || e.key === 'd') kb.right = false;
+        });
+
+        const joy = document.getElementById('joystick');
+        const stick = document.getElementById('joyStick');
+        let joyActive = false;
+        let joyCenter = {x: 0, y: 0};
+
+        function setStickPos(dx, dy) {
+            stick.style.transform = `translate(${dx}px, ${dy}px)`;
+        }
+
+        function startJoy(clientX, clientY, pointerId) {
+            const rect = joy.getBoundingClientRect();
+            joyCenter = {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+            joyActive = true;
+            joy.setPointerCapture(pointerId); // 搖桿捕獲輸入
+            handleJoyMove(clientX, clientY);
+        }
+        function handleJoyMove(clientX, clientY) {
+            if (!joyActive) return;
+            let dx = clientX - joyCenter.x; let dy = clientY - joyCenter.y;
+            const max = 56; const dist = Math.hypot(dx, dy);
+            const clamped = dist > max ? max / dist : 1;
+            dx *= clamped; dy *= clamped;
+            setStickPos(dx + 56, dy + 56);
+            player.dirX = dx / max; player.dirY = dy / max;
+        }
+        function endJoy(pointerId) {
+            if (!joyActive) return;
+            joyActive = false;
+            joy.releasePointerCapture(pointerId);
+            setStickPos(56, 56);
+            player.dirX = 0;
+            player.dirY = 0;
+        }
+
+        joy.addEventListener('pointerdown', e => {e.preventDefault(); startJoy(e.clientX, e.clientY, e.pointerId);});
+        joy.addEventListener('pointermove', e => {if (joyActive) handleJoyMove(e.clientX, e.clientY);});
+        joy.addEventListener('pointerup', e => {endJoy(e.pointerId);});
+        joy.addEventListener('pointercancel', e => {endJoy(e.pointerId);});
+
+
+        // ----- skills: New Release Logic -----
+        const skills = {
+            1: {cd: 0.5, last: -999, name: 'Q-Skill'},
+            2: {cd: 6, last: -999, name: 'E-Skill'},
+            3: {cd: 8, last: -999, name: 'R-Skill'}
+        };
+
+        function releaseSkill(id, dirX, dirY) {
+            const s = skills[id];
+            const now = performance.now() / 1000;
+            if (now - s.last < s.cd) return false;
+
+            const isRangedSkill = id === 1 || id === 2;
+
+            // 投射物技能需要瞄準方向 (dirX/Y 必須不為 0)，且拖曳距離必須夠長 (由 endAiming 處理)
+            if (isRangedSkill && (dirX === 0 && dirY === 0)) {
+                return false;
+            }
+
+            s.last = now;
+
+            const equippedWeapon = player.equipment[id === 2 ? 'E' : id === 3 ? 'R' : null];
+            let weaponDmgBonus = 0;
+
+            if (equippedWeapon) {
+                const def = WEAPON_DEFINITIONS[equippedWeapon.id];
+                weaponDmgBonus = def.baseDmg + (equippedWeapon.level - 1) * def.dmgPerLevel;
+            }
+
+            if (id === 1) { // Q 技能：基本攻擊 
+                const bulletDamage = player.baseAttack * 2;
+
+                projectiles.push({
+                    x: player.x + dirX * player.r,
+                    y: player.y + dirY * player.r,
+                    vx: dirX * 600,
+                    vy: dirY * 600,
+                    r: 8,
+                    dmg: bulletDamage,
+                    life: 2,
+                    type: 'basic'
+                });
+
+            } else if (id === 2) { // E 技能：治療 或 能量光束
+
+                if (equippedWeapon && equippedWeapon.type === 'E') {
+                    const skillDamage = player.baseAttack + weaponDmgBonus;
+
+                    projectiles.push({
+                        x: player.x + dirX * player.r,
+                        y: player.y + dirY * player.r,
+                        vx: dirX * 750,
+                        vy: dirY * 750,
+                        r: 10,
+                        dmg: skillDamage,
+                        life: 2,
+                        type: 'E_skill'
+                    });
+
+                } else {
+                    // 未裝備 E 武器：使用原始治療技能 (原地釋放，不需方向)
+                    player.hp = Math.min(player.maxHp, player.hp + 35);
+                    effects.push({
+                        x: player.x, y: player.y,
+                        r: player.r * 0.8, maxR: player.r * 2.5,
+                        color: 'rgba(50, 200, 50, 0.8)',
+                        life: 0.3, maxLife: 0.3,
+                        type: 'heal'
+                    });
+                }
+
+            } else if (id === 3) { // R 技能：範圍攻擊
+
+                const R = equippedWeapon ? 180 : 140;
+                const areaDamage = equippedWeapon ? (player.baseAttack * 0.5 + weaponDmgBonus) : (40 + player.baseAttack * 1.5);
+
+                allSpawns.forEach(spawn => {
+                    const m = spawn.monster;
+                    if (!m) return;
+                    const d = hyp(m.x - player.x, m.y - player.y);
+                    if (d < R) {
+                        m.hp -= areaDamage;
+                        effects.push({
+                            x: m.x, y: m.y,
+                            r: m.r * 1.5, maxR: m.r * 1.5,
+                            color: equippedWeapon ? 'rgba(255, 100, 0, 0.6)' : 'rgba(50, 150, 255, 0.8)',
+                            life: 0.1, maxLife: 0.1,
+                            type: 'hit'
+                        });
+                    }
+                });
+
+                effects.push({
+                    x: player.x, y: player.y,
+                    r: 20, maxR: R,
+                    color: equippedWeapon ? 'rgba(255, 50, 150, 0.8)' : 'rgba(50, 150, 255, 0.8)',
+                    life: 0.4, maxLife: 0.4,
+                    type: 'area'
+                });
+            }
+            updateSkillUIs();
+            return true;
+        }
+        /**
+         * 根據烈焰守護者武器狀態，生成環繞的火球。
+         * @param {object} weapon 烈焰守護者武器物件 (包含 level, baseDmg, dmgPerLevel)。
+         */
+        function generateFireOrbs(weapon) {
+            fireOrbs.length = 0; // 清空現有的火球
+            const numOrbs = weapon.level; // 火球數量等於武器等級
+            const orbitRadius = 60; // 火球環繞角色的半徑 (可調整)
+            const baseDamage = weapon.baseDmg + weapon.dmgPerLevel * (weapon.level - 1); // 計算總傷害
+
+            for (let i = 0; i < numOrbs; i++) {
+                fireOrbs.push({
+                    // 初始角度平均分佈
+                    angle: (i / numOrbs) * Math.PI * 2, 
+                    radius: orbitRadius,
+                    damage: baseDamage, 
+                    icon: '🔥', // 火球圖標
+                    cooldown: 0, // 用於控制火球對單個敵人的攻擊間隔
+                });
+            }
+        }
+        function checkFireOrbCollisions() {
+            if (fireOrbs.length === 0) return;
+
+            fireOrbs.forEach(orb => {
+                if (orb.cooldown > 0) return; 
+
+                enemies.forEach(enemy => {
+                    if (enemy.hp <= 0) return; 
+
+                    const dx = orb.x - enemy.x;
+                    const dy = orb.y - enemy.y;
+                    const distance = Math.hypot(dx, dy);
+
+                    // 假設火球的碰撞半徑為 15
+                    if (distance < (15 + enemy.r)) { 
+                        // 造成傷害
+                        const damageDealt = enemy.takeDamage(orb.damage);
+
+                        // 播放傷害數字
+                        showDamageText(enemy.x, enemy.y, damageDealt, '#FF4500'); 
+
+                        // 設置火球攻擊冷卻
+                        orb.cooldown = FIRE_ORB_ATTACK_CD; 
+                    }
+                });
+            });
+        }
+
+        function updateSkillUIs() {
+            const now = performance.now() / 1000;
+            for (const id of [1, 2, 3]) {
+                const s = skills[id]; const el = document.getElementById('cd' + id);
+                const btn = document.getElementById('skill' + id);
+                const remain = Math.max(0, s.cd - (now - s.last));
+
+                // 檢查當前是否正在瞄準
+                const isAiming = aimingSkill.active && aimingSkill.id == id;
+                if (isAiming) {
+                    if (el) el.style.display = 'none';
+                    if (btn) btn.classList.add('active-aim');
+                    continue;
+                }
+                // ⭐ 新增烈焰守護者禁用 E 技能的邏輯
+                if (isESkillDisabledByOrb) {
+                    skillEButton.disabled = true;
+                    skillEButton.classList.add('disabled-by-weapon'); 
+                    skillEButton.title = "被烈焰守護者禁用";
+                    skillEText.textContent = 'E'; // 技能名稱不變
+                    skillETimer.textContent = ''; // 清除計時器文字
+                } else {
+                    // 恢復正常的啟用/禁用邏輯
+                    skillEButton.classList.remove('disabled-by-weapon');
+                    const isEOnCooldown = player.cooldowns.E > 0;
+                    skillEButton.disabled = isEOnCooldown;
+                    skillEButton.title = isEOnCooldown ? `冷卻中 (${player.cooldowns.E.toFixed(1)}s)` : '使用 E 技能';
+
+                    // 顯示冷卻時間
+                    if (isEOnCooldown) {
+                        skillETimer.textContent = player.cooldowns.E.toFixed(1);
+                    } else {
+                        skillETimer.textContent = '';
+                    }
+                }
+
+                if (btn) btn.classList.remove('active-aim');
+
+                if (remain > 0) {
+                    if (el) {el.style.display = 'flex'; el.textContent = remain.toFixed(1) + 's';}
+                    if (btn) btn.style.opacity = 0.6;
+                } else {
+                    if (el) el.style.display = 'none';
+                    if (btn) btn.style.opacity = 1;
+                }
+            }
+        }
+
+        // ----- 技能瞄準拖曳邏輯 (修正：以技能鍵中心為操作起點) -----
+        const skillButtons = [
+            document.getElementById('skill1'),
+            document.getElementById('skill2'),
+            document.getElementById('skill3')
+        ];
+
+        skillButtons.forEach(btn => {
+            btn.addEventListener('pointerdown', startAiming);
+        });
+
+        function startAiming(e) {
+            e.preventDefault();
+            const id = parseInt(e.currentTarget.dataset.skillId);
+
+            // 檢查冷卻
+            if ((performance.now() / 1000) - skills[id].last < skills[id].cd) {
+                return;
+            }
+
+            // 確保沒有其他技能正在瞄準
+            if (aimingSkill.active) {
+                endAiming(aimingSkill.pointerId, true);
+            }
+
+            const rect = e.currentTarget.getBoundingClientRect();
+
+            aimingSkill.active = true;
+            aimingSkill.id = id;
+            aimingSkill.pointerId = e.pointerId; // 捕獲這個指針 ID
+
+            // 記錄技能按鈕的中心點 (螢幕座標) 作為拖曳原點
+            aimingSkill.startX = rect.left + rect.width / 2;
+            aimingSkill.startY = rect.top + rect.height / 2;
+
+            // 記錄當前觸摸點
+            aimingSkill.currentX = e.clientX;
+            aimingSkill.currentY = e.clientY;
+
+            // 監聽全域的移動和釋放事件
+            window.addEventListener('pointermove', moveAiming);
+            window.addEventListener('pointerup', endAimingLogic);
+            window.addEventListener('pointercancel', endAimingLogic);
+
+            // 設置按鈕的 pointer capture，這是多點觸控的關鍵
+            e.currentTarget.setPointerCapture(e.pointerId);
+
+            updateSkillUIs();
+        }
+
+        function moveAiming(e) {
+            if (!aimingSkill.active || e.pointerId !== aimingSkill.pointerId) return;
+
+            aimingSkill.currentX = e.clientX;
+            aimingSkill.currentY = e.clientY;
+
+            // **核心變動**：計算拖曳向量 (當前手指位置 - 技能按鈕中心)
+            const dx = aimingSkill.currentX - aimingSkill.startX;
+            const dy = aimingSkill.currentY - aimingSkill.startY;
+            const dist = hyp(dx, dy);
+
+            // 更新方向向量
+            const d = dist || 1;
+            aimingSkill.dirX = dx / d;
+            aimingSkill.dirY = dy / d;
+        }
+
+        function endAimingLogic(e) {
+            if (!aimingSkill.active || e.pointerId !== aimingSkill.pointerId) return;
+
+            endAiming(e.pointerId, false);
+        }
+
+        function endAiming(pointerId, forceCancel) {
+            // 移除監聽器
+            window.removeEventListener('pointermove', moveAiming);
+            window.removeEventListener('pointerup', endAimingLogic);
+            window.removeEventListener('pointercancel', endAimingLogic);
+
+            // 釋放 Pointer Capture
+            const btn = document.getElementById('skill' + aimingSkill.id);
+            if (btn) {
+                try {
+                    btn.releasePointerCapture(pointerId);
+                } catch (e) {
+                    // 有時 pointerup 事件會自行釋放，忽略錯誤
+                }
+            }
+
+            const id = aimingSkill.id;
+
+            // 計算釋放距離 (基於拖曳點 相對於 技能按鈕中心)
+            const dx = aimingSkill.currentX - aimingSkill.startX;
+            const dy = aimingSkill.currentY - aimingSkill.startY;
+            const dist = hyp(dx, dy);
+
+            const AIM_THRESHOLD = 30; // 最小拖曳距離 (像素)
+
+            if (!forceCancel && dist > AIM_THRESHOLD) {
+                // 拖曳距離足夠，計算方向並釋放
+                const d = dist;
+                // 使用 moveAiming 中計算好的方向向量
+                releaseSkill(id, aimingSkill.dirX, aimingSkill.dirY);
+            } else {
+                // 拖曳距離不足，但如果是範圍技能(R)或治療技能(無方向性E)，則視為原地釋放
+                if (!forceCancel && (id === 3 || (id === 2 && !player.equipment.E))) {
+                    releaseSkill(id, 0, 0);
+                } else {
+                    // 取消釋放
+                }
+            }
+
+            // 重置狀態
+            aimingSkill.active = false;
+            aimingSkill.id = null;
+            aimingSkill.pointerId = null;
+            aimingSkill.dirX = 0;
+            aimingSkill.dirY = 0;
+            aimingSkill.startX = 0;
+            aimingSkill.startY = 0;
+
+            updateSkillUIs(); // 退出瞄準狀態
+        }
+
+
+        // 舊的 getAimDirection 函式不再用於技能，僅用於普攻的備用方向
+        function getAimDirection() {
+            // ... (不變) ...
+            if (player.dirX !== 0 || player.dirY !== 0) {
+                const d = Math.hypot(player.dirX, player.dirY) || 1;
+                return {x: player.dirX / d, y: player.dirY / d};
+            }
+            const len = Math.hypot(player.faceX, player.faceY) || 1;
+            return {x: player.faceX / len, y: player.faceY / len};
+        }
+
+
+        // ----- game loop & logic -----
+        function hyp(ax, ay) {return Math.hypot(ax, ay)}
+
+        function dropCoins(monster) { /* ... (不變) ... */
+            const numCoins = Math.floor(Math.random() * (monster.goldMax - monster.goldMin + 1)) + monster.goldMin;
+
+            for (let i = 0; i < numCoins; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = Math.random() * 20 + 10;
+
+                coins.push({
+                    x: monster.x + Math.cos(angle) * distance,
+                    y: monster.y + Math.sin(angle) * distance,
+                    r: 6,
+                    value: monster.goldValue,
+                    color: 'var(--gold-color)'
+                });
+            }
+        }
+
+        function bossSkillLogic(m, dt) { /* ... (不變) ... */
+            const type = BOSS_TYPE;
+
+            if (m.rayDmgTimer === undefined) m.rayDmgTimer = 0;
+            m.rayDmgTimer += dt;
+
+            if (m.state === 'skill_meteor' || m.state === 'skill_ray_cast') {
+                m.skillCasting -= dt;
+
+                if (m.skillCasting <= 0) {
+                    if (m.state === 'skill_meteor') {
+                        const dist = hyp(player.x - m.skillTarget.x, player.y - m.skillTarget.y);
+                        if (dist < m.r + 50) {
+                            player.hp -= type.meteorDamage;
+                        }
+                        effects.push({
+                            x: m.skillTarget.x, y: m.skillTarget.y,
+                            r: 20, maxR: 70,
+                            color: 'rgba(255, 100, 0, 0.9)',
+                            life: 0.3, maxLife: 0.3,
+                            type: 'area'
+                        });
+
+                        m.skillTimer = type.skillCooldown;
+                        m.state = "chase";
+                        m.skillTarget = null;
+
+                    } else if (m.state === 'skill_ray_cast') {
+                        m.state = 'skill_ray_active';
+                        m.skillCasting = type.rayDuration;
+
+                        effects.push({
+                            x: m.x, y: m.y,
+                            dirX: m.skillTarget.x,
+                            dirY: m.skillTarget.y,
+                            targetX: m.x + m.skillTarget.x * 600,
+                            targetY: m.y + m.skillTarget.y * 600,
+                            color: 'rgba(255, 0, 255, 1.0)',
+                            life: type.rayDuration,
+                            maxLife: type.rayDuration,
+                            width: 100,
+                            type: 'ray_blast_active'
+                        });
+                    }
+                }
+                return;
+            }
+
+            if (m.state === 'skill_ray_active') {
+                m.skillCasting -= dt;
+
+                if (m.rayDmgTimer >= type.rayDamageInterval) {
+
+                    const bossAngle = Math.atan2(m.skillTarget.y, m.skillTarget.x);
+
+                    const dx = player.x - m.x;
+                    const dy = player.y - m.y;
+                    const rotatedX = dx * Math.cos(-bossAngle) - dy * Math.sin(-bossAngle);
+                    const rotatedY = dx * Math.sin(-bossAngle) + dy * Math.cos(-bossAngle);
+
+                    if (rotatedX > 0 && rotatedX < 600 && Math.abs(rotatedY) < 100 / 2) {
+                        player.hp -= type.rayDamage;
+                    }
+                    m.rayDmgTimer = 0;
+                }
+
+                if (m.skillCasting <= 0) {
+                    m.skillTimer = type.skillCooldown;
+                    m.state = "chase";
+                    m.skillTarget = null;
+                    m.rayDmgTimer = 0;
+                }
+                return;
+            }
+
+            if (m.aggro) {
+                m.skillTimer -= dt;
+                if (m.skillTimer <= 0) {
+                    const skillChoice = Math.random() < 0.5 ? 'meteor' : 'ray';
+
+                    if (skillChoice === 'meteor') {
+                        m.state = 'skill_meteor';
+                        m.skillCasting = type.skillCastingTime;
+                        m.skillTarget = {x: player.x, y: player.y};
+
+                        effects.push({
+                            x: m.skillTarget.x, y: m.skillTarget.y,
+                            r: 50, maxR: 50,
+                            color: 'rgba(255, 50, 50, 0.4)',
+                            life: type.skillCastingTime, maxLife: type.skillCastingTime,
+                            type: 'warning_circle'
+                        });
+
+                    } else if (skillChoice === 'ray') {
+                        m.state = 'skill_ray_cast';
+                        m.skillCasting = type.skillCastingTime;
+
+                        const dx = player.x - m.x;
+                        const dy = player.y - m.y;
+                        const d = hyp(dx, dy) || 1;
+                        m.skillTarget = {x: dx / d, y: dy / d, angle: Math.atan2(dy, dx)};
+
+                        effects.push({
+                            x: m.x, y: m.y,
+                            dirX: m.skillTarget.x,
+                            dirY: m.skillTarget.y,
+                            length: 600, width: 100,
+                            color: 'rgba(255, 0, 255, 0.3)',
+                            life: type.skillCastingTime, maxLife: type.skillCastingTime,
+                            type: 'warning_ray'
+                        });
+                    }
+
+                    m.attackCooldown = 0.5;
+                }
+            }
+        }
+
+
+        function updateMonsters(dt) {
+            monsters = [];
+
+            allSpawns.forEach(spawn => {
+                if (!spawn.monster) {
+                    if (spawn.respawnTimer !== undefined) {
+                        spawn.respawnTimer -= dt;
+                        if (spawn.respawnTimer <= 0) {
+                            spawnMonsterAtSpawn(spawn);
+                            if (spawn.type.id === 'boss') {
+                                spawn.respawnTimer = BOSS_TYPE.respawnTime;
+                            } else {
+                                spawn.respawnTimer = spawn.type.respawnTime;
+                            }
+                        }
+                    }
+                    return;
+                }
+
+                const m = spawn.monster;
+
+                const dx = player.x - m.x;
+                const dy = player.y - m.y;
+                const dist = hyp(dx, dy);
+
+                const AGGRO_RANGE = m.aggroRange;
+
+                if (!m.aggro) {
+                    if (dist < AGGRO_RANGE || m.hp < m.maxHp) {
+                        m.aggro = true;
+                        m.state = m.isBoss ? "chase" : "wander";
+                    }
+                }
+
+                if (m.isBoss) {
+                    bossSkillLogic(m, dt);
+                }
+
+                if (m.state === "wander") {
+                    m.wanderTimer -= dt;
+                    if (m.wanderTimer <= 0) {
+                        m.wanderDir = Math.random() * Math.PI * 2;
+                        m.wanderTimer = 1 + Math.random() * 2;
+                    }
+
+                    m.x += Math.cos(m.wanderDir) * m.speed * 0.4 * dt;
+                    m.y += Math.sin(m.wanderDir) * m.speed * 0.4 * dt;
+
+                } else if (m.state === "chase") {
+                    if (dist > 0.01) {
+                        m.x += (dx / dist) * m.speed * dt;
+                        m.y += (dy / dist) * m.speed * dt;
+                    }
+
+                    if (dist < m.attackRange) {
+                        m.attackCooldown -= dt;
+                        if (m.attackCooldown <= 0) {
+                            player.hp -= m.atk;
+                            m.attackCooldown = m.isBoss ? 1.5 : 0.65;
+
+                            effects.push({
+                                x: player.x, y: player.y,
+                                r: player.r * 1.5, maxR: player.r * 1.5,
+                                color: 'rgba(255, 50, 50, 0.6)',
+                                life: 0.1, maxLife: 0.1,
+                                type: 'hit'
+                            });
+                        }
+                    }
+                } else if (m.state.startsWith('skill_')) {
+                }
+
+                // 限制小怪活動範圍 (不包括 Boss)
+                if (!m.isBoss) {
+                    m.x = clamp(m.x, m.r, MAP_W - m.r);
+                    m.y = clamp(m.y, m.r, MAP_H - m.r);
+                }
+
+
+                if (m.hp <= 0) {
+                    dropCoins(m);
+                    player.exp += m.expDrop;
+
+                    tryDropWeapon(m);
+
+                    if (m.isBoss) {
+                        addToInventory('boss_item');
+                        spawn.respawnTimer = BOSS_TYPE.respawnTime;
+                    } else {
+                        if (Math.random() < 0.1) {
+                            addToInventory('healing_potion');
+                        }
+                        spawn.respawnTimer = spawn.type.respawnTime;
+                    }
+
+                    checkLevelUp();
+                    updatePlayerStatsHUD();
+                    spawn.monster = null;
+                } else {
+                    monsters.push(m);
+                }
+            });
+        }
+
+        function updateEffects(dt) { /* ... (不變) ... */
+            effects = effects.filter(e => {
+                e.life -= dt;
+                if (e.life <= 0) return false;
+
+                if (e.type === 'warning_circle' || e.type === 'warning_ray') {
+                    const flashRate = 0.2;
+                    const progress = (e.maxLife - e.life) % flashRate / flashRate;
+                    const alpha = 0.3 + 0.3 * Math.sin(progress * Math.PI * 2);
+
+                    const colorParts = e.color.match(/rgba\((.+)\)/)[1].split(',');
+                    e.drawColor = `rgba(${colorParts[0]}, ${colorParts[1]}, ${colorParts[2]}, ${alpha.toFixed(2)})`;
+
+                } else if (e.type === 'heal' || e.type === 'area') {
+                    const progress = 1 - e.life / e.maxLife;
+                    e.r = e.maxR * progress;
+
+                    const alpha = 1 - progress;
+                    const colorParts = e.color.match(/rgba\((.+)\)/)[1].split(',');
+                    e.drawColor = `rgba(${colorParts[0]}, ${colorParts[1]}, ${colorParts[2]}, ${alpha.toFixed(2)})`;
+                }
+                return true;
+            });
+        }
+
+        function updateCoins(dt) { /* ... (不變) ... */
+            const pickupRadius = player.r + 20;
+
+            coins = coins.filter(c => {
+                const dx = player.x - c.x;
+                const dy = player.y - c.y;
+                const dist = hyp(dx, dy);
+
+                if (dist < pickupRadius) {
+                    player.gold += c.value;
+                    updatePlayerStatsHUD();
+
+                    effects.push({
+                        x: c.x, y: c.y,
+                        r: 8, maxR: 20,
+                        color: 'rgba(255, 215, 0, 0.9)',
+                        life: 0.2, maxLife: 0.2,
+                        type: 'hit'
+                    });
+
+                    return false;
+                }
+                if (dist < 150) {
+                    const pullSpeed = 400;
+                    const normalizedDx = dx / dist;
+                    const normalizedDy = dy / dist;
+                    c.x += normalizedDx * pullSpeed * dt;
+                    c.y += normalizedDy * pullSpeed * dt;
+                }
+
+                return true;
+            });
+        }
+
+
+        function update(dt) {
+            // ... (玩家移動、冷卻、鏡頭更新等邏輯保持不變) ...
+            basicAttackCooldown = Math.max(0, basicAttackCooldown - dt);
+
+            let mx = 0, my = 0;
+            if (kb.left) mx -= 1;
+            if (kb.right) mx += 1;
+            if (kb.up) my -= 1;
+            if (kb.down) my += 1;
+
+            if (mx !== 0 || my !== 0) {
+                const len = Math.hypot(mx, my) || 1;
+                player.dirX = mx / len;
+                player.dirY = my / len;
+            } else if (!joyActive) {
+                player.dirX = 0;
+                player.dirY = 0;
+            }
+
+            if (player.dirX !== 0 || player.dirY !== 0) {
+                const len = Math.hypot(player.dirX, player.dirY) || 1;
+                player.faceX = player.dirX / len;
+                player.faceY = player.dirY / len;
+            }
+
+            player.x += player.dirX * player.speed * dt;
+            player.y += player.dirY * player.speed * dt;
+
+            player.x = clamp(player.x, 0, MAP_W);
+            player.y = clamp(player.y, 0, MAP_H);
+
+            updateMonsters(dt);
+            updateCoins(dt);
+            updateEffects(dt);
+
+            projectiles.forEach(p => {
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                p.life -= dt;
+            });
+
+            projectiles = projectiles.filter(p => {
+                if (p.life <= 0) return false;
+                for (const spawn of allSpawns) {
+                    const m = spawn.monster;
+                    if (!m) continue;
+                    const dist = hyp(p.x - m.x, p.y - m.y);
+                    if (dist < m.r + p.r) {
+                        m.hp -= p.dmg;
+
+                        m.aggro = true;
+                        m.state = m.isBoss ? (m.skillCasting > 0 ? m.state : "chase") : "chase";
+
+                        effects.push({
+                            x: m.x, y: m.y,
+                            r: m.r * 1.5, maxR: m.r * 1.5,
+                            color: 'rgba(255, 100, 0, 0.6)',
+                            life: 0.1, maxLife: 0.1,
+                            type: 'hit'
+                        });
+
+                        return false;
+                    }
+                }
+                return true;
+            });
+            if (fireOrbs.length > 0) {
+                fireOrbs.forEach(orb => {
+                    // 讓火球圍繞角色旋轉 (旋轉速度可調整)
+                    orb.angle += 3 * deltaTime; 
+
+                    // 更新火球在世界中的座標
+                    orb.x = player.x + orb.radius * Math.cos(orb.angle);
+                    orb.y = player.y + orb.radius * Math.sin(orb.angle);
+
+                    // 更新火球攻擊冷卻
+                    if (orb.cooldown > 0) {
+                        orb.cooldown -= deltaTime;
+                    }
+                });
+
+                // 檢查火球碰撞
+                checkFireOrbCollisions(); 
+            }
+
+            cam.x = player.x - SCREEN_W / 2;
+            cam.y = player.y - SCREEN_H / 2;
+            cam.x = clamp(cam.x, 0, MAP_W - SCREEN_W);
+            cam.y = clamp(cam.y, 0, MAP_H - SCREEN_H);
+
+            hudHp.style.width = (player.hp / player.maxHp * 100) + '%';
+
+            if (player.hp <= 0) {
+                console.log("你死了！遊戲重置。");
+                player.hp = player.maxHp;
+            }
+        }
+
+        function clamp(v, a, b) {return Math.max(a, Math.min(b, v));}
+
+        function render() {
+            // clear
+            ctx.clearRect(0, 0, SCREEN_W, SCREEN_H);
+
+            // draw map background
+            const startX = Math.floor(cam.x / 64) * 64, startY = Math.floor(cam.y / 64) * 64;
+            ctx.fillStyle = '#071421';
+            ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+            for (let x = startX; x < cam.x + SCREEN_W; x += 64) {
+                for (let y = startY; y < cam.y + SCREEN_H; y += 64) {
+                    const sx = x - cam.x, sy = y - cam.y;
+                    ctx.fillStyle = ((x + y) / 64) % 2 === 0 ? '#0b2633' : '#07222a';
+                    ctx.fillRect(sx, sy, 64, 64);
+                }
+            }
+
+            // 繪製 Boss 重生計時
+            if (!bossSpawn.monster && bossSpawn.respawnTimer > 0) {
+                const spawnX = bossSpawn.x - cam.x;
+                const spawnY = bossSpawn.y - cam.y;
+
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.font = '24px Inter, Arial';
+                ctx.textAlign = 'center';
+
+                const minutes = Math.floor(bossSpawn.respawnTimer / 60);
+                const seconds = Math.floor(bossSpawn.respawnTimer % 60).toString().padStart(2, '0');
+
+                ctx.fillText(`BOSS 重生中`, spawnX, spawnY - 40);
+                ctx.fillText(`${minutes}:${seconds}`, spawnX, spawnY);
+            }
+
+            // draw monsters
+            monsters.forEach(m => {
+                const sx = m.x - cam.x, sy = m.y - cam.y;
+                drawCircle(sx, sy, m.r, m.color);
+
+                const hpBarW = m.isBoss ? 80 : 40;
+                const hpBarH = m.isBoss ? 10 : 6;
+                const hpBarY = sy - m.r - 10;
+
+                ctx.fillStyle = '#fff';
+                ctx.font = '16px Inter, Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(m.isBoss ? `BOSS Lv ${m.level}` : `Lv ${m.level}`, sx, hpBarY - 10);
+
+                ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(sx - hpBarW / 2, hpBarY, hpBarW, hpBarH);
+                ctx.fillStyle = m.isBoss ? '#f00' : '#ff6b6b';
+                ctx.fillRect(sx - hpBarW / 2, hpBarY, hpBarW * (m.hp / m.maxHp), hpBarH);
+            });
+
+            // draw projectiles
+            projectiles.forEach(p => {const sx = p.x - cam.x, sy = p.y - cam.y; drawCircle(sx, sy, p.r, '#ffd166');});
+
+            // 繪製金幣
+            coins.forEach(c => {
+                const sx = c.x - cam.x, sy = c.y - cam.y;
+                drawCircle(sx, sy, c.r, c.color);
+                ctx.beginPath();
+                ctx.arc(sx, sy, c.r * 0.5, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            });
+
+            // draw effects 
+            effects.forEach(e => {
+                const sx = e.x - cam.x, sy = e.y - cam.y;
+
+                if (e.type === 'warning_circle' || e.type === 'warning_ray') {
+                    const alphaMatch = e.drawColor.match(/rgba\((.+)\)/);
+                    const alpha = alphaMatch ? parseFloat(alphaMatch[1].split(',')[3]) : 1;
+
+                    ctx.globalAlpha = alpha;
+                    drawCircle(sx, sy, e.r, e.drawColor);
+                    ctx.globalAlpha = 1;
+
+                } else if (e.type === 'warning_ray') {
+                    const alphaMatch = e.drawColor.match(/rgba\((.+)\)/);
+                    const alpha = alphaMatch ? parseFloat(alphaMatch[1].split(',')[3]) : 1;
+
+                    ctx.globalAlpha = alpha;
+                    ctx.fillStyle = e.drawColor;
+
+                    ctx.save();
+                    ctx.translate(sx, sy);
+                    const angle = Math.atan2(e.dirY, e.dirX);
+                    ctx.rotate(angle);
+
+                    ctx.fillRect(0, -e.width / 2, e.length, e.width);
+
+                    ctx.restore();
+                    ctx.globalAlpha = 1;
+
+                } else if (e.type === 'ray_blast_active') {
+                    const progress = 1 - e.life / e.maxLife;
+                    const alpha = 0.5 + 0.5 * Math.sin(progress * Math.PI * 10);
+
+                    ctx.strokeStyle = e.color;
+                    ctx.lineWidth = e.width;
+                    ctx.globalAlpha = alpha;
+
+                    ctx.beginPath();
+                    ctx.moveTo(sx, sy);
+                    ctx.lineTo(e.targetX - cam.x, e.targetY - cam.y);
+                    ctx.stroke();
+
+                    ctx.globalAlpha = 1;
+
+                } else if (e.type === 'hit') {
+                    ctx.globalAlpha = e.life / e.maxLife;
+                    drawCircle(sx, sy, e.r, e.color);
+                    ctx.globalAlpha = 1;
+
+                } else if (e.type === 'heal' || e.type === 'area') {
+                    drawCircle(sx, sy, e.r, e.drawColor || e.color);
+                }
+            });
+            ctx.font = '24px Arial'; 
+            fireOrbs.forEach(orb => {
+                // 轉換世界座標到 Canvas 座標
+                const drawX = orb.x - cam.x;
+                const drawY = orb.y - cam.y;
+
+                // 繪製火球圖標
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(orb.icon, drawX, drawY);
+            });
+            // draw player
+            const px = player.x - cam.x, py = player.y - cam.y;
+            drawCircle(px, py, player.r, player.color);
+            // player direction indicator
+            ctx.beginPath();
+            ctx.moveTo(px, py);
+            ctx.lineTo(px + player.faceX * player.r * 1.6, py + player.faceY * player.r * 1.6);
+            ctx.strokeStyle = '#9bd'; ctx.lineWidth = 3; ctx.stroke();
+
+            // 繪製技能瞄準線 (角色為中心)
+            if (aimingSkill.active) {
+
+                const dx = aimingSkill.dirX;
+                const dy = aimingSkill.dirY;
+
+                // 瞄準線長度上限 (像素)
+                const maxLineLength = 150;
+
+                // 視覺起點：玩家中心
+                const startX_visual = px;
+                const startY_visual = py;
+
+                const endX = startX_visual + dx * maxLineLength;
+                const endY = startY_visual + dy * maxLineLength;
+
+                // 繪製瞄準線
+                ctx.beginPath();
+                ctx.moveTo(startX_visual, startY_visual);
+                ctx.lineTo(endX, endY);
+                ctx.strokeStyle = '#2dd4bf'; // 藍綠色
+                ctx.lineWidth = 4;
+                ctx.stroke();
+
+                // 繪製箭頭末端圓圈
+                drawCircle(endX, endY, 8, '#2dd4bf');
+            }
+
+        }
+
+        function drawCircle(x, y, r, c) {ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = c; ctx.fill();}
+
+        function loop(ts) {
+            if (!lastTimestamp) lastTimestamp = ts; const dt = (ts - lastTimestamp) / 1000; lastTimestamp = ts;
+            const step = Math.min(1 / 15, dt);
+            update(step);
+            render();
+            requestAnimationFrame(loop);
+        }
+        requestAnimationFrame(loop);
+
+        function fitCanvas() {
+            const rect = viewport.getBoundingClientRect();
+            canvas.style.width = Math.floor(rect.width) + 'px';
+            canvas.style.height = Math.floor(rect.height) + 'px';
+        }
+        window.addEventListener('resize', fitCanvas); fitCanvas();
+
+        setInterval(updateSkillUIs, 100);
+
+        // utility: click on canvas to shoot towards clicked point (普攻不變)
+        canvas.addEventListener('click', e => {
+            // 1. 檢查冷卻
+            if (basicAttackCooldown > 0) return;
+
+            // 2. 檢查是否點擊到 UI 按鈕 (避免誤觸發，特別是右側技能區)
+            const skillsIngame = document.querySelector('.skills-ingame');
+            const skillButtons = skillsIngame.querySelectorAll('.skill-btn');
+            for (const btn of skillButtons) {
+                const rect = btn.getBoundingClientRect();
+                if (e.clientX >= rect.left && e.clientX <= rect.right &&
+                    e.clientY >= rect.top && e.clientY <= rect.bottom) {
+                    return;
+                }
+            }
+
+            const rect = canvas.getBoundingClientRect();
+
+            // 3. 處理 Canvas 縮放比例
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+
+            // 4. 計算點擊位置的 Canvas 內部座標 (已考慮縮放)
+            const canvasX = (e.clientX - rect.left) * scaleX;
+            const canvasY = (e.clientY - rect.top) * scaleY;
+
+            // 5. 轉換為遊戲世界座標
+            const clickX = canvasX + cam.x;
+            const clickY = canvasY + cam.y;
+
+            // 6. 發射點從角色中心
+            const startX = player.x;
+            const startY = player.y;
+
+            // 7. 計算方向向量
+            const dx = clickX - startX;
+            const dy = clickY - startY;
+            const d = Math.hypot(dx, dy) || 1;
+
+            const dirX = dx / d;
+            const dirY = dy / d;
+
+            const clickDamage = player.baseAttack * 1.5;
+
+            // 8. 設置冷卻
+            basicAttackCooldown = PLAYER_CONFIG.basicAttackCD;
+
+            // 9. 發射子彈
+            projectiles.push({
+                x: startX,
+                y: startY,
+                vx: dirX * 700,
+                vy: dirY * 700,
+                r: 8,
+                dmg: clickDamage,
+                life: 2,
+                type: 'basic'
+            });
+        });
+
+    </script>
+</body>
+
+</html>
