@@ -552,9 +552,9 @@
         };
         const WEAPON_RARITIES = {
             COMMON: {color: '#666', dropChance: 0.1 * 4},
-            RARE: {color: '#4d88ff', dropChance: 0.05 * 4},
-            EPIC: {color: '#8e44ad', dropChance: 0.02 * 4},
-            LEGENDARY: {color: '#e74c3c', dropChance: 0.01 * 4},
+            RARE: {color: '#4d88ff', dropChance: 0.1 * 4},
+            EPIC: {color: '#8e44ad', dropChance: 0.1 * 4},
+            LEGENDARY: {color: '#D4AF37', dropChance: 0.1 * 4},
             MYTHIC: {color: 'linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3)', isBossDrop: true}
         };
         // **調整點 1: 新增更多武器**
@@ -568,18 +568,6 @@
                 dmgPerLevel: 10,
                 levelUpCost: 100,
             },
-            // 新增 E 武器
-            FIRE_ORB_WEAPON: {
-                    id: 'FIRE_ORB_WEAPON',
-                    name: '烈焰守護者',
-                    type: 'E', // 裝備在 E 槽位
-                    rarity: WEAPON_RARITIES.EPIC, // 稀有度為 EPIC
-                    baseDmg: 20, // 火球基礎傷害
-                    dmgPerLevel: 8, // 每級成長傷害
-                    levelUpCost: 150,
-                    // 新增標記：用於在遊戲邏輯中識別這把武器
-                    isFireOrbWeapon: true, 
-            },
             R_WEAPON_BASIC: {
                 id: 'R_WEAPON_BASIC',
                 name: '烈焰衝擊 R',
@@ -589,7 +577,22 @@
                 dmgPerLevel: 20,
                 levelUpCost: 250,
             },
-            
+            W_FIRE_RING_EPIC: {
+                id: 'W_FIRE_RING_EPIC',
+                name: '烈焰光環 W',
+                type: 'W', // W 代表自動/環繞武器 (新類型)
+                rarity: WEAPON_RARITIES.EPIC,
+                baseDmg: 35,
+                dmgPerLevel: 12,
+                levelUpCost: 200,
+                // 【特殊屬性】這個屬性將用於您實現環繞火球的邏輯
+                isOrbital: true,
+                numOrbs: 0, // 初始火球數量 (將在 updateWeapons 中設為 Level)
+                orbRadius: 10, // 火球半徑
+                orbitDistance: 80, // 軌道半徑 (離玩家多遠)
+                cooldown: 0.5, // 每個火球的攻擊間隔
+                projectileType: 'fireball_orb', // 用於渲染和碰撞判斷
+            },
             // 新增傳奇 E 武器
             E_WEAPON_LEGENDARY: {
                 id: 'E_WEAPON_LEGENDARY',
@@ -597,8 +600,8 @@
                 type: 'E',
                 rarity: WEAPON_RARITIES.LEGENDARY,
                 baseDmg: 50,
-                dmgPerLevel: 15,
-                levelUpCost: 300,
+                dmgPerLevel: 30,
+                levelUpCost: 150,
             },
             // 新增傳奇 R 武器
             R_WEAPON_LEGENDARY: {
@@ -608,7 +611,7 @@
                 rarity: WEAPON_RARITIES.LEGENDARY,
                 baseDmg: 80,
                 dmgPerLevel: 30,
-                levelUpCost: 400,
+                levelUpCost: 200,
             },
             // Mythic R 武器 (上調基礎傷害)
             R_WEAPON_BOSS: {
@@ -769,17 +772,13 @@
             equipment: {
                 E: null,
                 R: null,
+                W: null,
             },
         };
         const PLAYER_CONFIG = {
             basicAttackCD: 0.3,
         };
         let basicAttackCooldown = 0;
-        // ... (在 player, enemies, projectiles 等變數之後)
-
-        const fireOrbs = []; // 用於儲存烈焰守護者武器產生的火球物件
-        let isESkillDisabledByOrb = false; // 標記 E 技能是否因武器而禁用
-        const FIRE_ORB_ATTACK_CD = 0.5; // 火球對單個敵人的攻擊冷卻 (秒)
 
         // ... (addToInventory, calculateExpToNextLevel, checkLevelUp, updatePlayerStatsHUD, showItemDetail, equipWeapon, upgradeWeapon, disassembleWeapon 函式保持不變) ...
         function addToInventory(itemOrWeapon, count = 1) {
@@ -925,29 +924,6 @@
             if (!weapon || !weapon.isWeapon) return;
 
             player.equipment[weapon.type] = weapon;
-            const item = player.inventory[index];
-            const slot = item.type;
-            const oldWeapon = player.equipment[slot];
-
-            // 處理卸下舊裝備的邏輯
-            if (oldWeapon) {
-                // ... (其他舊裝備卸下邏輯)
-
-                // ⭐ 烈焰守護者卸下邏輯
-                if (oldWeapon.isFireOrbWeapon) {
-                    fireOrbs.length = 0; // 移除所有火球
-                    isESkillDisabledByOrb = false; // 啟用 E 技能
-                }
-            }
-
-            // 處理裝備新武器的邏輯
-            player.equipment[slot] = item;
-
-            // ⭐ 烈焰守護者裝備邏輯
-            if (item.isFireOrbWeapon) {
-                isESkillDisabledByOrb = true; // 禁用 E 技能
-                generateFireOrbs(item); // 生成火球
-            }
 
             showItemDetail(index);
             updateInventoryUI();
@@ -1002,16 +978,33 @@
                     const mythicWeapons = [WEAPON_DEFINITIONS.R_WEAPON_BOSS, WEAPON_DEFINITIONS.E_WEAPON_BOSS];
                     droppedWeaponDef = mythicWeapons[Math.floor(Math.random() * mythicWeapons.length)];
                 }
-            } else {
-                // 普通怪掉落邏輯 (新增傳奇武器)
-                if (rand < WEAPON_RARITIES.RARE.dropChance) {
-                    droppedWeaponDef = WEAPON_DEFINITIONS.E_WEAPON_BASIC;
-                } else if (rand < WEAPON_RARITIES.EPIC.dropChance) {
-                    droppedWeaponDef = WEAPON_DEFINITIONS.R_WEAPON_BASIC;
-                } else if (rand < WEAPON_RARITIES.LEGENDARY.dropChance) {
-                    // 傳奇武器掉落（從傳奇池中隨機）
+            }
+            if (!isBoss) {
+                const rand = Math.random();
+
+                // 獨立機率定義 (假設總掉落率為 30%)
+                const chance = {
+                    LEGENDARY: 0.02, // 0.5%
+                    EPIC: 0.05,       // 2%
+                    RARE: 0.1,       // 5%
+                    // COMMON: 0.2      // 20%
+                };
+
+                if (rand < chance.LEGENDARY) {
                     const legendaryWeapons = [WEAPON_DEFINITIONS.E_WEAPON_LEGENDARY, WEAPON_DEFINITIONS.R_WEAPON_LEGENDARY];
                     droppedWeaponDef = legendaryWeapons[Math.floor(Math.random() * legendaryWeapons.length)];
+
+                } else if (rand < chance.LEGENDARY + chance.EPIC) {
+                    // 史詩武器掉落
+                    const epicWeapons = [
+                        WEAPON_DEFINITIONS.R_WEAPON_BASIC, // 烈焰衝擊 R
+                        WEAPON_DEFINITIONS.W_FIRE_RING_EPIC // 新增：烈焰光環 W
+                    ];
+                    droppedWeaponDef = epicWeapons[Math.floor(Math.random() * epicWeapons.length)];
+
+                } else if (rand < chance.LEGENDARY + chance.EPIC + chance.RARE) {
+                    // 稀有武器掉落 (只有能量光束 E)
+                    droppedWeaponDef = WEAPON_DEFINITIONS.E_WEAPON_BASIC;
                 }
             }
 
@@ -1160,6 +1153,17 @@
             isWeapon: true,
             level: 3,
             type: 'E',
+        });
+        // 添加烈焰光環武器用於測試
+        addToInventory({
+            id: 'W_FIRE_RING_EPIC',
+            count: 1,
+            name: '烈焰光環 W',
+            icon: 'W',
+            color: '#8e44ad',
+            isWeapon: true,
+            level: 1,
+            type: 'W',
         });
 
 
@@ -1321,54 +1325,6 @@
             updateSkillUIs();
             return true;
         }
-        /**
-         * 根據烈焰守護者武器狀態，生成環繞的火球。
-         * @param {object} weapon 烈焰守護者武器物件 (包含 level, baseDmg, dmgPerLevel)。
-         */
-        function generateFireOrbs(weapon) {
-            fireOrbs.length = 0; // 清空現有的火球
-            const numOrbs = weapon.level; // 火球數量等於武器等級
-            const orbitRadius = 60; // 火球環繞角色的半徑 (可調整)
-            const baseDamage = weapon.baseDmg + weapon.dmgPerLevel * (weapon.level - 1); // 計算總傷害
-
-            for (let i = 0; i < numOrbs; i++) {
-                fireOrbs.push({
-                    // 初始角度平均分佈
-                    angle: (i / numOrbs) * Math.PI * 2, 
-                    radius: orbitRadius,
-                    damage: baseDamage, 
-                    icon: '🔥', // 火球圖標
-                    cooldown: 0, // 用於控制火球對單個敵人的攻擊間隔
-                });
-            }
-        }
-        function checkFireOrbCollisions() {
-            if (fireOrbs.length === 0) return;
-
-            fireOrbs.forEach(orb => {
-                if (orb.cooldown > 0) return; 
-
-                enemies.forEach(enemy => {
-                    if (enemy.hp <= 0) return; 
-
-                    const dx = orb.x - enemy.x;
-                    const dy = orb.y - enemy.y;
-                    const distance = Math.hypot(dx, dy);
-
-                    // 假設火球的碰撞半徑為 15
-                    if (distance < (15 + enemy.r)) { 
-                        // 造成傷害
-                        const damageDealt = enemy.takeDamage(orb.damage);
-
-                        // 播放傷害數字
-                        showDamageText(enemy.x, enemy.y, damageDealt, '#FF4500'); 
-
-                        // 設置火球攻擊冷卻
-                        orb.cooldown = FIRE_ORB_ATTACK_CD; 
-                    }
-                });
-            });
-        }
 
         function updateSkillUIs() {
             const now = performance.now() / 1000;
@@ -1384,27 +1340,6 @@
                     if (btn) btn.classList.add('active-aim');
                     continue;
                 }
-                // ⭐ 新增烈焰守護者禁用 E 技能的邏輯
-                if (isESkillDisabledByOrb) {
-                    skillEButton.disabled = true;
-                    skillEButton.classList.add('disabled-by-weapon'); 
-                    skillEButton.title = "被烈焰守護者禁用";
-                    skillEText.textContent = 'E'; // 技能名稱不變
-                    skillETimer.textContent = ''; // 清除計時器文字
-                } else {
-                    // 恢復正常的啟用/禁用邏輯
-                    skillEButton.classList.remove('disabled-by-weapon');
-                    const isEOnCooldown = player.cooldowns.E > 0;
-                    skillEButton.disabled = isEOnCooldown;
-                    skillEButton.title = isEOnCooldown ? `冷卻中 (${player.cooldowns.E.toFixed(1)}s)` : '使用 E 技能';
-
-                    // 顯示冷卻時間
-                    if (isEOnCooldown) {
-                        skillETimer.textContent = player.cooldowns.E.toFixed(1);
-                    } else {
-                        skillETimer.textContent = '';
-                    }
-                }
 
                 if (btn) btn.classList.remove('active-aim');
 
@@ -1416,6 +1351,88 @@
                     if (btn) btn.style.opacity = 1;
                 }
             }
+        }
+        // 新增：玩家裝備武器的持續時間追蹤
+        let gameTime = 0;
+
+        // 新增：環繞火球的狀態管理
+        let orbitalFireballs = [];
+
+        function updatePlayerWeapons(dt) {
+            gameTime += dt;
+
+            // 1. 檢查玩家是否裝備了 W 類型武器（烈焰光環）- 必須裝備才會生效
+            const fireRingWeapon = player.equipment.W;
+
+            if (!fireRingWeapon || fireRingWeapon.level === 0) {
+                // 清除現有的火球
+                orbitalFireballs = [];
+                effects = effects.filter(e => e.type !== 'orbital_fireball');
+                return;
+            }
+
+            // 2. 更新火球狀態
+            const def = WEAPON_DEFINITIONS[fireRingWeapon.id];
+            const numOrbs = fireRingWeapon.level;
+            const orbitSpeed = 2; // 軌道旋轉速度（弧度/秒）
+            const orbitDistance = def.orbitDistance || 80;
+            const orbRadius = def.orbRadius || 10;
+            const orbDamage = def.baseDmg + (fireRingWeapon.level - 1) * def.dmgPerLevel;
+
+            // 3. 確保火球數量正確
+            while (orbitalFireballs.length < numOrbs) {
+                orbitalFireballs.push({
+                    angleOffset: (orbitalFireballs.length / numOrbs) * Math.PI * 2,
+                    lastHitTime: {} // 記錄每個怪物的最後受擊時間
+                });
+            }
+            while (orbitalFireballs.length > numOrbs) {
+                orbitalFireballs.pop();
+            }
+
+            // 4. 更新每個火球的位置並檢查碰撞
+            orbitalFireballs.forEach((orb, i) => {
+                const angle = (gameTime * orbitSpeed + orb.angleOffset) % (Math.PI * 2);
+                const orbX = player.x + orbitDistance * Math.cos(angle);
+                const orbY = player.y + orbitDistance * Math.sin(angle);
+
+                // 5. 碰撞檢測
+                allSpawns.forEach(spawn => {
+                    const m = spawn.monster;
+                    if (!m) return;
+
+                    const dist = hyp(orbX - m.x, orbY - m.y);
+                    if (dist < m.r + orbRadius) {
+                        // 檢查冷卻（每個火球對每個怪物獨立冷卻）
+                        const monsterId = spawn.type.id + '_' + m.x + '_' + m.y;
+                        const lastHit = orb.lastHitTime[monsterId] || 0;
+                        const cooldown = def.cooldown || 0.5;
+
+                        if (gameTime - lastHit > cooldown) {
+                            m.hp -= orbDamage;
+                            orb.lastHitTime[monsterId] = gameTime;
+
+                            // 激活怪物的 aggro
+                            m.aggro = true;
+                            if (!m.isBoss) m.state = "chase";
+
+                            // 添加擊中特效
+                            effects.push({
+                                x: m.x, y: m.y,
+                                r: m.r * 1.2, maxR: m.r * 1.2,
+                                color: 'rgba(255, 100, 0, 0.8)',
+                                life: 0.15, maxLife: 0.15,
+                                type: 'hit'
+                            });
+                        }
+                    }
+                });
+
+                // 6. 儲存火球位置供渲染使用
+                orb.x = orbX;
+                orb.y = orbY;
+                orb.r = orbRadius;
+            });
         }
 
         // ----- 技能瞄準拖曳邏輯 (修正：以技能鍵中心為操作起點) -----
@@ -1797,6 +1814,40 @@
                 }
             });
         }
+        // 假設您有一個 function updateOrbitalWeapons(dt)
+        function updateOrbitalWeapons(dt) {
+            // 1. 找到玩家擁有的「烈焰光環 W」武器
+            const fireRingWeapon = player.weapons.find(w => w.id === 'W_FIRE_RING_EPIC');
+
+            if (!fireRingWeapon || fireRingWeapon.level === 0) {
+                // 清除現有的火球 (如果武器被移除)
+                effects = effects.filter(e => e.type !== 'orbital_fireball');
+                return;
+            }
+
+            // 2. 更新火球的狀態和數量
+            const numOrbs = fireRingWeapon.level;
+            const orbitSpeed = 4; // 軌道旋轉速度 (可調整)
+
+            // 確保每次更新時，軌道火球的數量是正確的
+            // 您需要設計一個機制來管理這些火球的ID和角度
+
+            // 範例：生成火球的環繞角度
+            for (let i = 0; i < numOrbs; i++) {
+                const angle = (player.timeSinceStart * orbitSpeed + (i / numOrbs) * Math.PI * 2) % (Math.PI * 2);
+
+                const orbX = player.x + fireRingWeapon.orbitDistance * Math.cos(angle);
+                const orbY = player.y + fireRingWeapon.orbitDistance * Math.sin(angle);
+
+                // 將火球作為 Effect 繪製，並加入碰撞判斷
+                // (您需要實現一個高效的機制來管理這些環繞火球的 Effect ID，避免重複創建)
+
+                // 3. 碰撞判斷
+                // 檢查 orbX, orbY 是否與怪物發生碰撞，若發生則對怪物造成傷害
+                // 傷害 = fireRingWeapon.totalDmg (baseDmg + level * dmgPerLevel)
+                // 記得檢查每個火球的攻擊冷卻 (weapon.cooldown)，避免一幀內多次傷害
+            }
+        }
 
         function updateEffects(dt) { /* ... (不變) ... */
             effects = effects.filter(e => {
@@ -1892,6 +1943,7 @@
             updateMonsters(dt);
             updateCoins(dt);
             updateEffects(dt);
+            updatePlayerWeapons(dt);
 
             projectiles.forEach(p => {
                 p.x += p.vx * dt;
@@ -1924,24 +1976,6 @@
                 }
                 return true;
             });
-            if (fireOrbs.length > 0) {
-                fireOrbs.forEach(orb => {
-                    // 讓火球圍繞角色旋轉 (旋轉速度可調整)
-                    orb.angle += 3 * deltaTime; 
-
-                    // 更新火球在世界中的座標
-                    orb.x = player.x + orb.radius * Math.cos(orb.angle);
-                    orb.y = player.y + orb.radius * Math.sin(orb.angle);
-
-                    // 更新火球攻擊冷卻
-                    if (orb.cooldown > 0) {
-                        orb.cooldown -= deltaTime;
-                    }
-                });
-
-                // 檢查火球碰撞
-                checkFireOrbCollisions(); 
-            }
 
             cam.x = player.x - SCREEN_W / 2;
             cam.y = player.y - SCREEN_H / 2;
@@ -2076,17 +2110,7 @@
                     drawCircle(sx, sy, e.r, e.drawColor || e.color);
                 }
             });
-            ctx.font = '24px Arial'; 
-            fireOrbs.forEach(orb => {
-                // 轉換世界座標到 Canvas 座標
-                const drawX = orb.x - cam.x;
-                const drawY = orb.y - cam.y;
 
-                // 繪製火球圖標
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(orb.icon, drawX, drawY);
-            });
             // draw player
             const px = player.x - cam.x, py = player.y - cam.y;
             drawCircle(px, py, player.r, player.color);
@@ -2095,6 +2119,32 @@
             ctx.moveTo(px, py);
             ctx.lineTo(px + player.faceX * player.r * 1.6, py + player.faceY * player.r * 1.6);
             ctx.strokeStyle = '#9bd'; ctx.lineWidth = 3; ctx.stroke();
+
+            // 繪製烈焰光環火球
+            orbitalFireballs.forEach(orb => {
+                if (orb.x !== undefined && orb.y !== undefined) {
+                    const sx = orb.x - cam.x;
+                    const sy = orb.y - cam.y;
+                    const r = orb.r || 10;
+                    
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+                    const gradient = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+                    gradient.addColorStop(0, 'rgba(255, 255, 100, 1)');
+                    gradient.addColorStop(0.4, 'rgba(255, 150, 0, 0.9)');
+                    gradient.addColorStop(1, 'rgba(255, 50, 0, 0.6)');
+                    ctx.fillStyle = gradient;
+                    ctx.fill();
+                    
+                    ctx.save();
+                    ctx.shadowColor = 'rgba(255, 100, 0, 0.8)';
+                    ctx.shadowBlur = 15;
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+            });
 
             // 繪製技能瞄準線 (角色為中心)
             if (aimingSkill.active) {
