@@ -1,1 +1,855 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>多人打怪遊戲</title>
+    <style>
+        :root {
+            --ui-bg: #0f1724;
+            --panel: #0b1220;
+            --accent: #2dd4bf;
+            --danger: #fb7185;
+            --exp-color: #3b82f6;
+            --gold-color: #fcd34d;
+        }
+        html, body { height: 100%; margin: 0; background: linear-gradient(180deg, #020617 0%, #07102a 100%); font-family: Inter, system-ui, Arial }
+        .game-wrap { display: grid; grid-template-columns: 1fr 220px; gap: 12px; height: 100vh; padding: 12px; box-sizing: border-box }
+        .viewport { position: relative; overflow: hidden; border-radius: 10px; background: linear-gradient(180deg, #0b1220, #07122b); box-shadow: 0 6px 30px rgba(0, 0, 0, .6); aspect-ratio: 16/9; max-width: 100%; max-height: 100%; }
+        canvas { display: block; width: 100%; height: 100% }
+        .side-panel { background: rgba(255, 255, 255, 0.03); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 12px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02); overflow-y: auto; }
+        .player-info { display: flex; flex-direction: column; gap: 4px; padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+        .player-stats { display: flex; align-items: center; gap: 8px; }
+        .player-avatar { width: 48px; height: 48px; border-radius: 8px; border: 2px solid var(--accent); box-shadow: 0 0 8px rgba(45, 212, 191, 0.5); }
+        .player-level-exp { flex: 1; font-size: 13px; color: #e6eef0; }
+        .player-name { font-weight: 700; color: #e6eef0 }
+        .exp-bar { height: 20px; background: rgba(255, 255, 255, 0.1); border-radius: 3px; overflow: hidden; position: relative; }
+        .exp-fill { height: 100%; background-color: var(--exp-color); transition: width 0.3s ease-out; }
+        .exp-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-size: 12px; font-weight: 600; text-shadow: 0 0 2px #000; }
+        .player-attack-stat, .player-gold-stat { font-size: 14px; color: #fff; font-weight: 600; padding-top: 8px; }
+        .player-gold-stat { color: var(--gold-color); display: flex; align-items: center; gap: 4px; padding-top: 4px; padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+        .inventory-panel { color: #cde; }
+        .inventory-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; min-height: 100px; }
+        .item-slot { width: 45px; height: 45px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; position: relative; overflow: hidden; color: #fff; cursor: pointer; }
+        .item-icon { width: 100%; height: 100%; background-color: #555; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+        .item-count { position: absolute; bottom: 0; right: 0; background: rgba(0, 0, 0, 0.6); color: #fff; padding: 0 2px; border-top-left-radius: 3px; font-size: 10px; line-height: 1; }
+        .item-slot.active { border: 2px solid var(--accent); box-shadow: 0 0 8px rgba(45, 212, 191, 0.8); }
+        .action-btn { padding: 8px 12px; border: none; border-radius: 6px; color: #0b1220; font-weight: bold; cursor: pointer; transition: opacity 0.2s; font-size: 14px; display: block; width: 100%; box-sizing: border-box; margin-top: 8px; }
+        .action-btn:hover { opacity: 0.8; }
+        .equip-btn { background-color: var(--accent); }
+        .use-btn { background-color: #22c55e; }
+        .disassemble-btn { background-color: var(--danger); }
+        .hud { position: absolute; left: 12px; top: 12px; color: #cde; z-index: 50 }
+        .hud .name { font-weight: 600; margin-bottom: 4px }
+        .hp-bar { width: 220px; height: 14px; background: rgba(255, 255, 255, 0.08); border-radius: 8px; overflow: hidden }
+        .hp-fill { height: 100%; background: linear-gradient(90deg, #ef4444, #f97316); width: 100% }
+        .ctrls { position: absolute; left: 16px; bottom: 16px; width: 160px; height: 160px; touch-action: none; z-index: 60 }
+        .joy-base { position: absolute; inset: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.03); display: flex; align-items: center; justify-content: center }
+        .joy-stick { width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(180deg, #111827, #0b1220); box-shadow: 0 6px 14px rgba(0, 0, 0, .6); transform: translate(56px, 56px) }
+        .skills-ingame { position: absolute; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 12px; align-items: center; z-index: 60; }
+        .skill-btn { width: 84px; height: 84px; border-radius: 50%; background: linear-gradient(180deg, #06202a, #083244); display: flex; align-items: center; justify-content: center; color: #dff; position: relative; font-weight: 700; user-select: none; font-size: 24px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4); cursor: pointer; transition: background 0.2s ease-in-out; touch-action: none; }
+        .skill-btn:hover { background: linear-gradient(180deg, #083244, #06202a); }
+        .skill-btn.active-aim { transform: scale(1.1); border: 3px solid var(--accent); box-shadow: 0 0 15px var(--accent); }
+        .skill-cd { position: absolute; inset: 0; border-radius: 50%; background: rgba(0, 0, 0, 0.7); display: flex; align-items: center; justify-content: center; font-size: 18px; color: #fff; }
+        .connection-status { position: absolute; top: 12px; right: 12px; padding: 8px 16px; border-radius: 8px; font-weight: bold; z-index: 100; }
+        .connection-status.connected { background: rgba(34, 197, 94, 0.8); color: white; }
+        .connection-status.disconnected { background: rgba(239, 68, 68, 0.8); color: white; }
+        .connection-status.connecting { background: rgba(234, 179, 8, 0.8); color: white; }
+        .online-players { font-size: 12px; color: #9fb4c4; margin-top: 8px; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; }
+        .footer-note { font-size: 12px; color: #9fb4c4 }
+        @media (max-width:880px) {
+            .game-wrap { grid-template-columns: 1fr 140px }
+            .skills-ingame { right: 8px; bottom: 8px; gap: 8px; }
+            .skill-btn { width: 60px; height: 60px; font-size: 20px; }
+            .skill-cd { font-size: 16px; }
+            .item-slot { width: 30px; height: 30px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-wrap">
+        <div class="viewport" id="viewport">
+            <canvas id="gameCanvas" width="1280" height="720"></canvas>
+            <div class="connection-status connecting" id="connectionStatus">連線中...</div>
+            <div class="hud" id="hud">
+                <div class="name" id="hudName">玩家：等待連線</div>
+                <div class="hp-bar"><div class="hp-fill" id="hpFill"></div></div>
+            </div>
+            <div class="ctrls" id="joystick">
+                <div class="joy-base"></div>
+                <div class="joy-stick" id="joyStick"></div>
+            </div>
+            <div class="skills-ingame">
+                <div class="skill-btn" id="skill1" data-skill-id="1">Q<div class="skill-cd" id="cd1" style="display:none"></div></div>
+                <div class="skill-btn" id="skill2" data-skill-id="2">E<div class="skill-cd" id="cd2" style="display:none"></div></div>
+                <div class="skill-btn" id="skill3" data-skill-id="3">R<div class="skill-cd" id="cd3" style="display:none"></div></div>
+            </div>
+        </div>
+        <div class="side-panel">
+            <div class="player-info">
+                <div class="player-stats">
+                    <div class="player-avatar" id="playerAvatar"></div>
+                    <div class="player-level-exp">
+                        <div class="player-name" id="playerName">等待連線</div>
+                        <div id="playerStatsText">等級 1</div>
+                    </div>
+                </div>
+                <div class="exp-bar">
+                    <div class="exp-text" id="expText">0/100</div>
+                    <div class="exp-fill" id="expFill" style="width: 0%;"></div>
+                </div>
+                <div class="player-attack-stat" id="playerAttackStat">攻擊力：10</div>
+                <div class="player-gold-stat" id="playerGoldStat">金幣：<span id="goldAmount">0</span></div>
+            </div>
+            <div class="inventory-panel">
+                <h3>背包</h3>
+                <div class="inventory-grid" id="inventoryGrid"></div>
+            </div>
+            <div id="itemActions" style="display:none;">
+                <div id="selectedItemName" style="color:#fff; font-weight:bold; margin-bottom:8px;"></div>
+                <button id="equipBtn" class="action-btn equip-btn" style="display:none;">裝備</button>
+                <button id="upgradeBtn" class="action-btn upgrade-btn" style="display:none;">升級</button>
+                <button id="useBtn" class="action-btn use-btn" style="display:none;">使用</button>
+                <button id="disassembleBtn" class="action-btn disassemble-btn" style="display:none;">分解</button>
+            </div>
+            <div class="online-players" id="onlinePlayers">在線玩家: 0</div>
+            <div style="margin-top:auto"><div class="footer-note">多人對戰模式：可攻擊其他玩家，搶奪 Boss！</div></div>
+        </div>
+    </div>
 
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const viewport = document.getElementById('viewport');
+        const SCREEN_W = 1280, SCREEN_H = 720;
+        const MAP_W = 3000, MAP_H = 2000;
+
+        let ws = null;
+        let playerId = null;
+        let playerName = '';
+        let gameState = { you: null, players: [], monsters: [], projectiles: [] };
+        let cam = { x: 0, y: 0 };
+        let selectedItemIndex = -1;
+        let skillCooldowns = { 1: 0, 2: 0, 3: 0 };
+        let lastSkillUse = { 1: 0, 2: 0, 3: 0 };
+        const SKILL_CDS = { 1: 0.5, 2: 6, 3: 8 };
+
+        const aimingSkill = { active: false, id: null, pointerId: null, startX: 0, startY: 0, currentX: 0, currentY: 0, dirX: 0, dirY: 0 };
+
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 10;
+        let lastInventoryLength = 0;
+        let lastInventoryHash = '';
+        
+        function connect() {
+            const statusEl = document.getElementById('connectionStatus');
+            statusEl.textContent = '連線中...';
+            statusEl.className = 'connection-status connecting';
+
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsHost = window.location.host;
+            ws = new WebSocket(`${wsProtocol}//${wsHost}/ws`);
+
+            ws.onopen = () => {
+                statusEl.textContent = '已連線';
+                statusEl.className = 'connection-status connected';
+                reconnectAttempts = 0;
+
+                setupInventoryActions();
+            };
+
+            ws.onclose = () => {
+                statusEl.textContent = '已斷線 - 重新連線中...';
+                statusEl.className = 'connection-status disconnected';
+                reconnectAttempts++;
+                const delay = Math.min(1000 * Math.pow(1.5, reconnectAttempts), 10000);
+                setTimeout(connect, delay);
+            };
+
+            ws.onerror = (error) => {
+                statusEl.textContent = '連線錯誤';
+                statusEl.className = 'connection-status disconnected';
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleMessage(data);
+                } catch (e) {
+                    console.error('Parse error:', e);
+                }
+            };
+        }
+
+        function handleMessage(data) {
+            if (data.type === 'connected') {
+                playerId = data.playerId;
+                playerName = data.playerName;
+                document.getElementById('hudName').textContent = `玩家：${playerName}`;
+                document.getElementById('playerName').textContent = playerName;
+            } else if (data.type === 'state') {
+                gameState = data;
+                updateUI();
+            }
+        }
+
+        function updateUI() {
+            const you = gameState.you;
+            if (!you) return;
+
+            document.getElementById('hpFill').style.width = (you.hp / you.maxHp * 100) + '%';
+            document.getElementById('playerStatsText').textContent = `等級 ${you.level}`;
+            document.getElementById('expText').textContent = `${you.exp}/${you.expToNextLevel}`;
+            document.getElementById('expFill').style.width = (you.exp / you.expToNextLevel * 100) + '%';
+            document.getElementById('playerAttackStat').textContent = `攻擊力：${you.baseAttack}`;
+            document.getElementById('goldAmount').textContent = you.gold;
+            document.getElementById('playerAvatar').style.background = you.color;
+            document.getElementById('onlinePlayers').textContent = `在線玩家: ${gameState.players.length + 1}`;
+
+            // 背包長度改變或內容改變時重新渲染
+            const inventoryStr = JSON.stringify(you.inventory);
+            if (you.inventory.length !== lastInventoryLength || inventoryStr !== lastInventoryHash) {
+                lastInventoryLength = you.inventory.length;
+                lastInventoryHash = inventoryStr;
+                updateInventoryUI();
+            }
+        }
+
+        function updateInventoryUI() {
+            const grid = document.getElementById('inventoryGrid');
+            grid.innerHTML = '';
+            const you = gameState.you;
+            if (!you) return;
+
+            you.inventory.forEach((item, index) => {
+                const slot = document.createElement('div');
+                slot.className = 'item-slot';
+                slot.title = item.name;
+
+                // 設置顏色框
+                if (item.color) {
+                    slot.style.borderColor = item.color;
+                    slot.style.borderWidth = '3px';
+                } else {
+                    slot.style.borderColor = '#555';
+                    slot.style.borderWidth = '1px';
+                }
+                slot.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+
+                const icon = document.createElement('div');
+                icon.className = 'item-icon';
+                icon.style.backgroundColor = 'transparent';  // 避免覆蓋槽位背景色
+                icon.textContent = item.isWeapon ? item.name.substring(0, 3) : item.icon;
+                icon.style.fontSize = item.isWeapon ? '12px' : '10px';
+                icon.style.color = '#fff';
+                icon.style.textShadow = '1px 1px 2px #000';
+                slot.appendChild(icon);
+
+                if (item.count > 1) {
+                    const count = document.createElement('span');
+                    count.className = 'item-count';
+                    count.textContent = item.count;
+                    slot.appendChild(count);
+                }
+
+                if (item.isWeapon) {
+                    const equipped = you.equipment[item.type];
+                    if (equipped && equipped.id === item.id && equipped.level === item.level) {
+                        slot.classList.add('active');
+                    }
+                }
+
+                // 添加點擊事件
+                slot.onclick = (e) => {
+                    e.stopPropagation();
+                    console.log('槽位被點擊，索引:', index, '物品:', item.name);
+                    selectItem(index);
+                };
+
+                grid.appendChild(slot);
+            });
+
+            // 空槽位
+            for (let i = you.inventory.length; i < 12; i++) {
+                const slot = document.createElement('div');
+                slot.className = 'item-slot';
+                slot.onclick = (e) => {
+                    e.stopPropagation();
+                    selectedItemIndex = -1;
+                    document.getElementById('itemActions').style.display = 'none';
+                };
+                grid.appendChild(slot);
+            }
+        }
+
+        function selectItem(index) {
+            console.log('選擇物品，索引:', index);
+            selectedItemIndex = index;
+            const you = gameState.you;
+            if (!you) {
+                console.log('玩家數據不存在');
+                return;
+            }
+
+            const item = you.inventory[index];
+            if (!item) {
+                console.log('物品不存在，索引:', index);
+                return;
+            }
+
+            console.log('選擇的物品:', item.name, item);
+
+            const actions = document.getElementById('itemActions');
+            actions.style.display = 'block';
+            document.getElementById('selectedItemName').textContent = item.name + (item.isWeapon ? ` Lv${item.level}` : '');
+
+            const equipBtn = document.getElementById('equipBtn');
+            const upgradeBtn = document.getElementById('upgradeBtn');
+            const useBtn = document.getElementById('useBtn');
+            const disassembleBtn = document.getElementById('disassembleBtn');
+
+            // 先隱藏所有按鈕
+            equipBtn.style.display = 'none';
+            upgradeBtn.style.display = 'none';
+            useBtn.style.display = 'none';
+            disassembleBtn.style.display = 'none';
+
+            if (item.isWeapon) {
+                console.log('這是武器，顯示裝備按鈕');
+                const isEquipped = you.equipment[item.type] && 
+                                 you.equipment[item.type].id === item.id &&
+                                 you.equipment[item.type].level === item.level;
+
+                equipBtn.textContent = isEquipped ? '卸下' : '裝備';
+                equipBtn.style.display = 'block';
+                equipBtn.disabled = false;
+
+                const upgradeCost = item.level * 100;
+                upgradeBtn.textContent = `升級 (${upgradeCost}G)`;
+                upgradeBtn.style.display = 'block';
+                upgradeBtn.disabled = you.gold < upgradeCost;
+
+                disassembleBtn.textContent = '分解';
+                disassembleBtn.style.display = 'block';
+                disassembleBtn.disabled = false;
+
+            } else if (item.id === 'healing_potion') {
+                useBtn.style.display = 'block';
+                useBtn.disabled = false;
+
+            } else if (item.id === 'boss_item') {
+                disassembleBtn.textContent = '分解 (1000G)';
+                disassembleBtn.style.display = 'block';
+                disassembleBtn.disabled = false;
+            }
+        }
+
+        function setupInventoryActions() {
+            const equipBtn = document.getElementById('equipBtn');
+            const upgradeBtn = document.getElementById('upgradeBtn');
+            const useBtn = document.getElementById('useBtn');
+            const disassembleBtn = document.getElementById('disassembleBtn');
+
+            if (equipBtn) {
+                equipBtn.onclick = () => {
+                    console.log('裝備按鈕被點擊，索引:', selectedItemIndex);
+                    if (selectedItemIndex >= 0 && ws && ws.readyState === WebSocket.OPEN) {
+                        const you = gameState.you;
+                        if (!you) return;
+
+                        const item = you.inventory[selectedItemIndex];
+                        if (!item) return;
+
+                        const isEquipped = you.equipment[item.type] && 
+                                         you.equipment[item.type].id === item.id && 
+                                         you.equipment[item.type].level === item.level;
+
+                        if (isEquipped) {
+                            console.log('卸下武器:', item.type);
+                            ws.send(JSON.stringify({ type: 'unequip', weaponType: item.type }));
+                        } else {
+                            console.log('裝備武器:', item.name, '索引:', selectedItemIndex);
+                            ws.send(JSON.stringify({ type: 'equip', index: selectedItemIndex }));
+                        }
+
+                        document.getElementById('itemActions').style.display = 'none';
+                        selectedItemIndex = -1;
+                    }
+                };
+            }
+
+            if (upgradeBtn) {
+                upgradeBtn.onclick = () => {
+                    console.log('升級按鈕被點擊，索引:', selectedItemIndex);
+                    if (selectedItemIndex >= 0 && ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'upgrade', index: selectedItemIndex }));
+                        // 重置背包哈希以強制重新渲染
+                        lastInventoryHash = '';
+                        document.getElementById('itemActions').style.display = 'none';
+                        selectedItemIndex = -1;
+                    }
+                };
+            }
+
+            if (useBtn) {
+                useBtn.onclick = () => {
+                    console.log('使用按鈕被點擊，索引:', selectedItemIndex);
+                    if (selectedItemIndex >= 0 && ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'use_item', index: selectedItemIndex }));
+                        // 重置背包哈希以強制重新渲染
+                        lastInventoryHash = '';
+                        document.getElementById('itemActions').style.display = 'none';
+                        selectedItemIndex = -1;
+                    }
+                };
+            }
+
+            if (disassembleBtn) {
+                disassembleBtn.onclick = () => {
+                    console.log('分解按鈕被點擊，索引:', selectedItemIndex);
+                    if (selectedItemIndex >= 0 && ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'disassemble', index: selectedItemIndex }));
+                        document.getElementById('itemActions').style.display = 'none';
+                        selectedItemIndex = -1;
+
+                        lastInventoryHash = '';
+                    }
+                };
+            }
+        }
+
+        const kb = { up: false, down: false, left: false, right: false };
+        let lastDir = { x: 0, y: 0 };
+
+        window.addEventListener('keydown', e => {
+            if (e.key === 'ArrowUp' || e.key === 'w') kb.up = true;
+            if (e.key === 'ArrowDown' || e.key === 's') kb.down = true;
+            if (e.key === 'ArrowLeft' || e.key === 'a') kb.left = true;
+            if (e.key === 'ArrowRight' || e.key === 'd') kb.right = true;
+        });
+        window.addEventListener('keyup', e => {
+            if (e.key === 'ArrowUp' || e.key === 'w') kb.up = false;
+            if (e.key === 'ArrowDown' || e.key === 's') kb.down = false;
+            if (e.key === 'ArrowLeft' || e.key === 'a') kb.left = false;
+            if (e.key === 'ArrowRight' || e.key === 'd') kb.right = false;
+        });
+
+        const joy = document.getElementById('joystick');
+        const stick = document.getElementById('joyStick');
+        let joyActive = false, joyCenter = { x: 0, y: 0 }, joyDir = { x: 0, y: 0 };
+
+        joy.addEventListener('pointerdown', e => { e.preventDefault(); const rect = joy.getBoundingClientRect(); joyCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }; joyActive = true; joy.setPointerCapture(e.pointerId); handleJoyMove(e.clientX, e.clientY); });
+        joy.addEventListener('pointermove', e => { if (joyActive) handleJoyMove(e.clientX, e.clientY); });
+        joy.addEventListener('pointerup', e => { joyActive = false; joy.releasePointerCapture(e.pointerId); stick.style.transform = 'translate(56px, 56px)'; joyDir = { x: 0, y: 0 }; });
+        joy.addEventListener('pointercancel', e => { joyActive = false; stick.style.transform = 'translate(56px, 56px)'; joyDir = { x: 0, y: 0 }; });
+
+        function handleJoyMove(clientX, clientY) {
+            let dx = clientX - joyCenter.x, dy = clientY - joyCenter.y;
+            const max = 56, dist = Math.hypot(dx, dy);
+            const clamped = dist > max ? max / dist : 1;
+            dx *= clamped; dy *= clamped;
+            stick.style.transform = `translate(${dx + 56}px, ${dy + 56}px)`;
+            joyDir = { x: dx / max, y: dy / max };
+        }
+
+        function sendMove() {
+            let dirX = 0, dirY = 0;
+            if (kb.up) dirY -= 1;
+            if (kb.down) dirY += 1;
+            if (kb.left) dirX -= 1;
+            if (kb.right) dirX += 1;
+            if (joyActive) { dirX = joyDir.x; dirY = joyDir.y; }
+            const dist = Math.hypot(dirX, dirY);
+            if (dist > 1) { dirX /= dist; dirY /= dist; }
+
+            if (dirX !== lastDir.x || dirY !== lastDir.y) {
+                lastDir = { x: dirX, y: dirY };
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'move', dirX, dirY }));
+                }
+            }
+        }
+
+        const skillButtons = [document.getElementById('skill1'), document.getElementById('skill2'), document.getElementById('skill3')];
+        skillButtons.forEach(btn => btn.addEventListener('pointerdown', startAiming));
+
+        function startAiming(e) {
+            e.preventDefault();
+            const id = parseInt(e.currentTarget.dataset.skillId);
+            const now = performance.now() / 1000;
+            if (now - lastSkillUse[id] < SKILL_CDS[id]) return;
+            if (aimingSkill.active) endAiming(aimingSkill.pointerId, true);
+
+            const rect = e.currentTarget.getBoundingClientRect();
+            aimingSkill.active = true;
+            aimingSkill.id = id;
+            aimingSkill.pointerId = e.pointerId;
+            aimingSkill.startX = rect.left + rect.width / 2;
+            aimingSkill.startY = rect.top + rect.height / 2;
+            aimingSkill.currentX = e.clientX;
+            aimingSkill.currentY = e.clientY;
+
+            window.addEventListener('pointermove', moveAiming);
+            window.addEventListener('pointerup', endAimingLogic);
+            window.addEventListener('pointercancel', endAimingLogic);
+            e.currentTarget.setPointerCapture(e.pointerId);
+            updateSkillUIs();
+        }
+
+        function moveAiming(e) {
+            if (!aimingSkill.active || e.pointerId !== aimingSkill.pointerId) return;
+            aimingSkill.currentX = e.clientX;
+            aimingSkill.currentY = e.clientY;
+            const dx = aimingSkill.currentX - aimingSkill.startX;
+            const dy = aimingSkill.currentY - aimingSkill.startY;
+            const dist = Math.hypot(dx, dy) || 1;
+            aimingSkill.dirX = dx / dist;
+            aimingSkill.dirY = dy / dist;
+        }
+
+        function endAimingLogic(e) {
+            if (!aimingSkill.active || e.pointerId !== aimingSkill.pointerId) return;
+            endAiming(e.pointerId, false);
+        }
+
+        function endAiming(pointerId, forceCancel) {
+            window.removeEventListener('pointermove', moveAiming);
+            window.removeEventListener('pointerup', endAimingLogic);
+            window.removeEventListener('pointercancel', endAimingLogic);
+
+            const btn = document.getElementById('skill' + aimingSkill.id);
+            if (btn) try { btn.releasePointerCapture(pointerId); } catch (e) {}
+
+            const id = aimingSkill.id;
+            const dx = aimingSkill.currentX - aimingSkill.startX;
+            const dy = aimingSkill.currentY - aimingSkill.startY;
+            const dist = Math.hypot(dx, dy);
+            const AIM_THRESHOLD = 30;
+
+            if (!forceCancel && dist > AIM_THRESHOLD) {
+                releaseSkill(id, aimingSkill.dirX, aimingSkill.dirY);
+            } else if (!forceCancel && id === 3) {
+                releaseSkill(id, 0, 0);
+            } else if (!forceCancel && id === 2) {
+                const you = gameState.you;
+                if (you && !you.equipment.E) {
+                    releaseSkill(id, 0, 0);
+                }
+            }
+
+            aimingSkill.active = false;
+            aimingSkill.id = null;
+            updateSkillUIs();
+        }
+
+        function releaseSkill(id, dirX, dirY) {
+            const now = performance.now() / 1000;
+            if (now - lastSkillUse[id] < SKILL_CDS[id]) return;
+            lastSkillUse[id] = now;
+            skillCooldowns[id] = SKILL_CDS[id];
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'skill', skillId: id, dirX, dirY }));
+            }
+        }
+
+        function updateSkillUIs() {
+            const now = performance.now() / 1000;
+            for (const id of [1, 2, 3]) {
+                const remain = Math.max(0, SKILL_CDS[id] - (now - lastSkillUse[id]));
+                const el = document.getElementById('cd' + id);
+                const btn = document.getElementById('skill' + id);
+
+                const isAiming = aimingSkill.active && aimingSkill.id == id;
+                if (isAiming) { if (el) el.style.display = 'none'; if (btn) btn.classList.add('active-aim'); continue; }
+                if (btn) btn.classList.remove('active-aim');
+
+                if (remain > 0) {
+                    if (el) { el.style.display = 'flex'; el.textContent = remain.toFixed(1) + 's'; }
+                    if (btn) btn.style.opacity = 0.6;
+                } else {
+                    if (el) el.style.display = 'none';
+                    if (btn) btn.style.opacity = 1;
+                }
+            }
+        }
+
+        canvas.addEventListener('click', e => {
+            const you = gameState.you;
+            if (!you || !you.alive) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const canvasX = (e.clientX - rect.left) * scaleX;
+            const canvasY = (e.clientY - rect.top) * scaleY;
+            const clickX = canvasX + cam.x;
+            const clickY = canvasY + cam.y;
+
+            const dx = clickX - you.x;
+            const dy = clickY - you.y;
+            const d = Math.hypot(dx, dy) || 1;
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'attack', dirX: dx / d, dirY: dy / d }));
+            }
+        });
+
+        function hyp(dx, dy) { return Math.sqrt(dx * dx + dy * dy); }
+        function drawCircle(x, y, r, c) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = c; ctx.fill(); }
+
+        function render() {
+            ctx.clearRect(0, 0, SCREEN_W, SCREEN_H);
+
+            const you = gameState.you;
+            if (you) {
+                cam.x = you.x - SCREEN_W / 2;
+                cam.y = you.y - SCREEN_H / 2;
+                cam.x = Math.max(0, Math.min(MAP_W - SCREEN_W, cam.x));
+                cam.y = Math.max(0, Math.min(MAP_H - SCREEN_H, cam.y));
+            }
+
+            const startX = Math.floor(cam.x / 64) * 64, startY = Math.floor(cam.y / 64) * 64;
+            ctx.fillStyle = '#071421';
+            ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+            for (let x = startX; x < cam.x + SCREEN_W; x += 64) {
+                for (let y = startY; y < cam.y + SCREEN_H; y += 64) {
+                    const sx = x - cam.x, sy = y - cam.y;
+                    ctx.fillStyle = ((x + y) / 64) % 2 === 0 ? '#0b2633' : '#07222a';
+                    ctx.fillRect(sx, sy, 64, 64);
+                }
+            }
+
+            gameState.monsters.forEach(m => {
+                if (!m.alive) return;
+                const sx = m.x - cam.x, sy = m.y - cam.y;
+                drawCircle(sx, sy, m.r, m.color);
+
+                if (m.skillWarning) {
+                    const progress = m.skillWarning.progress;
+                    const alpha = Math.sin(progress * Math.PI) * 0.6 + 0.2;
+
+                    if (m.skillWarning.type === 'laser') {
+                        const sx = m.x - cam.x, sy = m.y - cam.y;
+                        const tx = m.skillWarning.targetX - cam.x, ty = m.skillWarning.targetY - cam.y;
+
+                        // 繪製激光警告區域
+                        ctx.save();
+                        ctx.strokeStyle = `rgba(255, 0, 255, ${alpha})`;
+                        ctx.lineWidth = 100;
+                        ctx.globalAlpha = 0.5 + progress * 0.3;
+                        ctx.beginPath();
+                        ctx.moveTo(sx, sy);
+                        ctx.lineTo(tx, ty);
+                        ctx.stroke();
+
+                        // 繪製脈衝效果
+                        ctx.strokeStyle = 'rgba(255, 100, 255, 1)';
+                        ctx.lineWidth = 4;
+                        ctx.setLineDash([20, 10]);
+                        ctx.lineDashOffset = -progress * 30;
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                        ctx.restore();
+
+                    } else if (m.skillWarning.type === 'meteor') {
+                        const wsx = m.skillWarning.targetX - cam.x;
+                        const wsy = m.skillWarning.targetY - cam.y;
+
+                        // 繪製隕石警告圈
+                        ctx.save();
+                        ctx.fillStyle = `rgba(255, 100, 0, ${alpha})`;
+                        ctx.beginPath();
+                        ctx.arc(wsx, wsy, 100, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        // 繪製脈衝圓環
+                        ctx.strokeStyle = 'rgba(255, 50, 0, 1)';
+                        ctx.lineWidth = 3;
+                        ctx.beginPath();
+                        ctx.arc(wsx, wsy, 100 * (0.7 + progress * 0.3), 0, Math.PI * 2);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }
+
+                const hpBarW = m.isBoss ? 80 : 40;
+                const hpBarH = m.isBoss ? 10 : 6;
+                const hpBarY = sy - m.r - 10;
+
+                ctx.fillStyle = '#fff';
+                ctx.font = '14px Inter, Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(m.isBoss ? `BOSS Lv${m.level}` : `Lv${m.level}`, sx, hpBarY - 8);
+
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.fillRect(sx - hpBarW / 2, hpBarY, hpBarW, hpBarH);
+                ctx.fillStyle = m.isBoss ? '#f00' : '#ff6b6b';
+                ctx.fillRect(sx - hpBarW / 2, hpBarY, hpBarW * (m.hp / m.maxHp), hpBarH);
+            });
+
+            if (gameState.lasers) {
+                gameState.lasers.forEach(laser => {
+                    const sx = laser.x - cam.x, sy = laser.y - cam.y;
+                    ctx.strokeStyle = laser.color;
+                    ctx.lineWidth = 30;
+                    ctx.globalAlpha = 0.7;
+                    ctx.beginPath();
+                    ctx.moveTo(sx, sy);
+                    ctx.lineTo(sx + laser.dirX * 800, sy + laser.dirY * 800);
+                    ctx.stroke();
+                    ctx.globalAlpha = 1;
+                });
+            }
+
+            if (gameState.meteors) {
+                gameState.meteors.forEach(meteor => {
+                    const sx = meteor.x - cam.x, sy = meteor.y - cam.y;
+                    drawCircle(sx, sy, meteor.r, meteor.color);
+                    ctx.strokeStyle = 'rgba(255, 136, 0, 0.5)';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, 100, 0, Math.PI * 2);
+                    ctx.stroke();
+                });
+            }
+
+            gameState.projectiles.forEach(p => {
+                const sx = p.x - cam.x, sy = p.y - cam.y;
+                drawCircle(sx, sy, p.r, p.color || '#ffd166');
+            });
+
+            gameState.players.forEach(p => {
+                if (!p.alive) return;
+                const sx = p.x - cam.x, sy = p.y - cam.y;
+
+                // 繪製位移軌跡特效
+                if (p.is_dashing) {
+                    ctx.save();
+                    ctx.globalAlpha = 0.4;
+                    for (let i = 0; i < 3; i++) {
+                        const trailX = sx - p.dash_dir_x * 20 * i;
+                        const trailY = sy - p.dash_dir_y * 20 * i;
+                        drawCircle(trailX, trailY, p.r * (1 - i * 0.2), 'rgba(100, 200, 255, 0.6)');
+                    }
+                    ctx.restore();
+                }
+
+                drawCircle(sx, sy, p.r, p.color);
+
+                ctx.beginPath();
+                ctx.moveTo(sx, sy);
+                ctx.lineTo(sx + p.faceX * p.r * 1.6, sy + p.faceY * p.r * 1.6);
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.fillStyle = '#fff';
+                ctx.font = '12px Inter, Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(p.name, sx, sy - p.r - 15);
+
+                const hpBarW = 40, hpBarH = 4, hpBarY = sy - p.r - 8;
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.fillRect(sx - hpBarW / 2, hpBarY, hpBarW, hpBarH);
+                ctx.fillStyle = '#22c55e';
+                ctx.fillRect(sx - hpBarW / 2, hpBarY, hpBarW * (p.hp / p.maxHp), hpBarH);
+
+                if (p.equipment && p.equipment.W) {
+                    const numOrbs = p.equipment.W.level || 1;
+                    const orbitDistance = 80;
+                    const orbitSpeed = 2;
+                    const currentTime = Date.now() / 1000;
+                    for (let i = 0; i < numOrbs; i++) {
+                        const angle = (currentTime * orbitSpeed + (i / numOrbs) * Math.PI * 2) % (Math.PI * 2);
+                        const orbX = sx + orbitDistance * Math.cos(angle);
+                        const orbY = sy + orbitDistance * Math.sin(angle);
+                        ctx.beginPath();
+                        ctx.arc(orbX, orbY, 10, 0, Math.PI * 2);
+                        const gradient = ctx.createRadialGradient(orbX, orbY, 0, orbX, orbY, 10);
+                        gradient.addColorStop(0, 'rgba(255, 255, 100, 1)');
+                        gradient.addColorStop(0.4, 'rgba(255, 150, 0, 0.9)');
+                        gradient.addColorStop(1, 'rgba(255, 50, 0, 0.6)');
+                        ctx.fillStyle = gradient;
+                        ctx.fill();
+                    }
+                }
+            });
+
+            if (you && you.alive) {
+                const px = you.x - cam.x, py = you.y - cam.y;
+                drawCircle(px, py, you.r, you.color);
+
+                ctx.beginPath();
+                ctx.moveTo(px, py);
+                ctx.lineTo(px + you.faceX * you.r * 1.6, py + you.faceY * you.r * 1.6);
+                ctx.strokeStyle = '#9bd';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                if (you.equipment && you.equipment.W) {
+                    const numOrbs = you.equipment.W.level || 1;
+                    const orbitDistance = 80;
+                    const orbitSpeed = 2;
+                    const currentTime = Date.now() / 1000;
+                    for (let i = 0; i < numOrbs; i++) {
+                        const angle = (currentTime * orbitSpeed + (i / numOrbs) * Math.PI * 2) % (Math.PI * 2);
+                        const orbX = px + orbitDistance * Math.cos(angle);
+                        const orbY = py + orbitDistance * Math.sin(angle);
+                        ctx.beginPath();
+                        ctx.arc(orbX, orbY, 10, 0, Math.PI * 2);
+                        const gradient = ctx.createRadialGradient(orbX, orbY, 0, orbX, orbY, 10);
+                        gradient.addColorStop(0, 'rgba(255, 255, 100, 1)');
+                        gradient.addColorStop(0.4, 'rgba(255, 150, 0, 0.9)');
+                        gradient.addColorStop(1, 'rgba(255, 50, 0, 0.6)');
+                        ctx.fillStyle = gradient;
+                        ctx.fill();
+                    }
+                }
+
+                if (aimingSkill.active) {
+                    const maxLineLength = 150;
+                    const endX = px + aimingSkill.dirX * maxLineLength;
+                    const endY = py + aimingSkill.dirY * maxLineLength;
+                    ctx.beginPath();
+                    ctx.moveTo(px, py);
+                    ctx.lineTo(endX, endY);
+                    ctx.strokeStyle = '#2dd4bf';
+                    ctx.lineWidth = 4;
+                    ctx.stroke();
+                    drawCircle(endX, endY, 8, '#2dd4bf');
+                }
+            } else if (you && !you.alive) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+                ctx.fillStyle = '#ff4444';
+                ctx.font = 'bold 48px Inter, Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('你已陣亡', SCREEN_W / 2, SCREEN_H / 2 - 20);
+                ctx.fillStyle = '#fff';
+                ctx.font = '24px Inter, Arial';
+                ctx.fillText('即將重生...', SCREEN_W / 2, SCREEN_H / 2 + 30);
+            }
+        }
+
+        function loop() {
+            sendMove();
+            render();
+            updateSkillUIs();
+            requestAnimationFrame(loop);
+        }
+
+        function fitCanvas() {
+            const rect = viewport.getBoundingClientRect();
+            canvas.style.width = Math.floor(rect.width) + 'px';
+            canvas.style.height = Math.floor(rect.height) + 'px';
+        }
+        window.addEventListener('resize', fitCanvas);
+        fitCanvas();
+
+        connect();
+        requestAnimationFrame(loop);
+    </script>
+</body>
+</html>
